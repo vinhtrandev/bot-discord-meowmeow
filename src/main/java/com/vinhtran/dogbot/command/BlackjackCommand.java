@@ -7,6 +7,7 @@ import com.vinhtran.dogbot.service.ShopService;
 import com.vinhtran.dogbot.service.UserService;
 import com.vinhtran.dogbot.session.BlackjackSessionService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.entities.MessageEmbed;
 import net.dv8tion.jda.api.events.message.MessageReceivedEvent;
@@ -17,6 +18,7 @@ import org.springframework.stereotype.Component;
 import java.awt.*;
 import java.io.InputStream;
 
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class BlackjackCommand implements Command {
@@ -37,7 +39,6 @@ public class BlackjackCommand implements Command {
                 ? event.getMember().getEffectiveName()
                 : event.getAuthor().getName();
 
-        // ── Kiểm tra đăng ký ──────────────────────────────────
         try {
             userService.getUser(userId);
         } catch (RuntimeException e) {
@@ -92,7 +93,6 @@ public class BlackjackCommand implements Command {
                 } catch (Exception ignored) {}
             });
 
-            // ── Kết thúc ngay (Xì Bàn / Xì Dách) ──────────────────────
             if (game.isPlayerXiBang() && game.isDealerXiBang()) {
                 gameService.recordResult(userId, "BLACKJACK", bet, "DRAW");
                 bjService.clear(userId);
@@ -142,20 +142,16 @@ public class BlackjackCommand implements Command {
                 return;
             }
 
-            // ── Chưa kết thúc → ảnh bài + nút ──────────────────────────
             sendPlaying(event, game, skinEmoji, userId, bet, false);
 
         } catch (NumberFormatException e) {
             event.getChannel().sendMessage("Số coin không hợp lệ!").queue();
         } catch (Exception e) {
-            e.printStackTrace();
+            log.error("Lỗi BlackjackCommand userId={}", userId, e);
             event.getChannel().sendMessage("Lỗi: " + e.getMessage()).queue();
         }
     }
 
-    // =========================================================
-    // GỬI TIN NHẮN ĐANG CHƠI
-    // =========================================================
     public void sendPlaying(MessageReceivedEvent event, BlackjackGame game,
                             String skinEmoji, String userId, long bet, boolean doubled) {
         try {
@@ -169,14 +165,11 @@ public class BlackjackCommand implements Command {
                             Button.primary("bj_double:" + userId + ":" + bet, "🔥 Gấp Đôi Cược")
                     ).queue();
         } catch (Exception e) {
-            e.printStackTrace();
+            log.error("Lỗi sendPlaying userId={}", userId, e);
             event.getChannel().sendMessage("Lỗi render bài!").queue();
         }
     }
 
-    // =========================================================
-    // GỬI TIN NHẮN KẾT QUẢ
-    // =========================================================
     public void sendFinal(MessageReceivedEvent event, BlackjackGame game,
                           String skinEmoji, String msg, Color color) {
         try {
@@ -186,16 +179,13 @@ public class BlackjackCommand implements Command {
                     .addFiles(FileUpload.fromData(img, "table.png"))
                     .queue();
         } catch (Exception e) {
-            e.printStackTrace();
+            log.error("Lỗi sendFinal", e);
             event.getChannel()
                     .sendMessageEmbeds(buildFinalEmbed(skinEmoji, msg, color))
                     .queue();
         }
     }
 
-    // =========================================================
-    // EMBED BUILDERS — gọi từ ButtonListener
-    // =========================================================
     public MessageEmbed buildPlaying(BlackjackGame game, String skinEmoji,
                                      long bet, boolean doubled) {
         return buildPlayingEmbed(game, skinEmoji, bet, doubled);
@@ -206,7 +196,6 @@ public class BlackjackCommand implements Command {
         return buildFinalEmbed(skinEmoji, msg, color);
     }
 
-    // ─────────────────────────────────────────────────────────
     private MessageEmbed buildPlayingEmbed(BlackjackGame game, String skinEmoji,
                                            long bet, boolean doubled) {
         String betLine = "💰 Cược: **" + bet + " coin**" + (doubled ? " 🔥 *(Gấp đôi)*" : "");
@@ -231,9 +220,6 @@ public class BlackjackCommand implements Command {
                 .build();
     }
 
-    // =========================================================
-    // HELPER
-    // =========================================================
     public String getSkinEmoji(String userId) {
         String coupleEmoji = coupleService.getCoupleEmoji(userId);
         if (!coupleEmoji.isEmpty()) return coupleEmoji;
