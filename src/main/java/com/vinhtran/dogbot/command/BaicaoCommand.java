@@ -8,27 +8,32 @@ import com.vinhtran.dogbot.service.UserService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import net.dv8tion.jda.api.EmbedBuilder;
+import net.dv8tion.jda.api.entities.Message;
 import net.dv8tion.jda.api.events.message.MessageReceivedEvent;
+import net.dv8tion.jda.api.utils.FileUpload;
 import org.springframework.stereotype.Component;
 
 import java.awt.*;
+import java.io.InputStream;
 
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class BaicaoCommand implements Command {
 
-    private final UserService   userService;
-    private final GameService   gameService;
-    private final ShopService   shopService;
+    private final UserService userService;
+    private final GameService gameService;
+    private final ShopService shopService;
     private final CoupleService coupleService;
 
     @Override
-    public String getName() { return "!baicao"; }
+    public String getName() {
+        return "!baicao";
+    }
 
     @Override
     public void execute(MessageReceivedEvent event, String[] args) {
-        String userId   = event.getAuthor().getId();
+        String userId = event.getAuthor().getId();
         String username = event.getMember() != null
                 ? event.getMember().getEffectiveName()
                 : event.getAuthor().getName();
@@ -37,7 +42,8 @@ public class BaicaoCommand implements Command {
             userService.getUser(userId);
         } catch (RuntimeException e) {
             event.getChannel().sendMessage(
-                    "❌ Bạn chưa đăng ký! Dùng `!register` trước nhé.").queue();
+                    "❌ Bạn chưa đăng ký! Dùng `!register` trước nhé."
+            ).queue();
             return;
         }
 
@@ -62,55 +68,70 @@ public class BaicaoCommand implements Command {
 
             if (bet <= 0 || bet > balance) {
                 event.getChannel().sendMessage(
-                        "Cược không hợp lệ! Số dư: **" + balance + " coin**").queue();
+                        "Cược không hợp lệ! Số dư: **" + balance + " coin**"
+                ).queue();
                 return;
             }
 
-            BaicaoGame baicaoGame      = new BaicaoGame();
+            // Tạo game
+            BaicaoGame baicaoGame = new BaicaoGame();
             BaicaoGame.Hand playerHand = baicaoGame.dealHand();
-            BaicaoGame.Hand botHand    = baicaoGame.dealHand();
-            String result              = baicaoGame.determineResult(playerHand, botHand);
+            BaicaoGame.Hand botHand = baicaoGame.dealHand();
+            String result = baicaoGame.determineResult(playerHand, botHand);
 
+            // Ghi kết quả
             gameService.recordResult(userId, "BAI_CAO", bet, result);
 
             String skinEmoji = getSkinEmoji(userId);
 
+            // Thông báo cặp đôi nếu có
             coupleService.getPartnerId(userId).ifPresent(partnerId -> {
                 try {
                     String partnerName = userService.getUser(partnerId).getUsername();
                     String coupleEmoji = coupleService.getCoupleEmoji(userId);
                     event.getChannel().sendMessage(
                             "💖 " + coupleEmoji + " **" + username + "** và **" + partnerName
-                                    + "** đang trải nghiệm Bài Cào cùng nhau! 💕").queue();
+                                    + "** đang trải nghiệm Bài Cào cùng nhau! 💕"
+                    ).queue();
                 } catch (Exception ignored) {}
             });
 
+            // Tin nhắn kết quả
             String msg;
-            Color  color;
+            Color color;
 
-            if (result.equals("WIN")) {
-                msg   = "🎉 **" + username + "** thắng **" + bet + " coin**!";
-                color = Color.GREEN;
-            } else if (result.equals("LOSE")) {
-                msg   = "😢 **" + username + "** thua **" + bet + " coin**";
-                color = Color.RED;
-            } else {
-                msg   = "🤝 Hòa — hoàn lại **" + bet + " coin**";
-                color = Color.YELLOW;
+            switch (result) {
+                case "WIN" -> {
+                    msg = "🎉 **" + username + "** thắng **" + bet + " coin**!";
+                    color = Color.GREEN;
+                }
+                case "LOSE" -> {
+                    msg = "😢 **" + username + "** thua **" + bet + " coin**";
+                    color = Color.RED;
+                }
+                default -> {
+                    msg = "🤝 Hòa — hoàn lại **" + bet + " coin**";
+                    color = Color.YELLOW;
+                }
             }
 
-            event.getChannel().sendMessageEmbeds(
-                    new EmbedBuilder()
-                            .setTitle(skinEmoji + " Bài Cào — Kết quả")
-                            .addField("🃏 Bài của bạn",
-                                    playerHand.cards() + "\n**" + playerHand.rank() + "**", true)
-                            .addField("🤖 Bài Bot",
-                                    botHand.cards() + "\n**" + botHand.rank() + "**", true)
-                            .setDescription(msg)
-                            .setFooter("Cào > Sánh > Thùng > Ba đôi > Đôi > Thường")
-                            .setColor(color)
-                            .build()
-            ).queue();
+            // Gửi embed kèm hình bàn bài
+            try (InputStream img = baicaoGame.getTableImage(playerHand, botHand)) {
+                event.getChannel().sendMessageEmbeds(
+                                new EmbedBuilder()
+                                        .setTitle(skinEmoji + " Bài Cào — Kết quả")
+                                        .addField("🃏 Bài của bạn",
+                                                playerHand.cardsText() + "\n**" + playerHand.rank() + "**", true)
+                                        .addField("🤖 Bài Bot",
+                                                botHand.cardsText() + "\n**" + botHand.rank() + "**", true)
+                                        .setDescription(msg)
+                                        .setImage("attachment://baicao.png")
+                                        .setFooter("Thùng Phá Sảnh > Ba Cô > Thùng > Sảnh > Đôi > Điểm")
+                                        .setColor(color)
+                                        .build()
+                        ).addFiles(FileUpload.fromData(img, "baicao.png"))
+                        .queue();
+            }
 
         } catch (NumberFormatException e) {
             event.getChannel().sendMessage("Số coin không hợp lệ!").queue();

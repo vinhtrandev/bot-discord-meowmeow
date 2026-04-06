@@ -1,5 +1,6 @@
 package com.vinhtran.dogbot.util;
 
+import com.vinhtran.dogbot.game.BlackjackGame;
 import com.vinhtran.dogbot.game.BlackjackGame.Card;
 
 import javax.imageio.ImageIO;
@@ -199,5 +200,54 @@ public class CardImageGenerator {
         ByteArrayOutputStream b = new ByteArrayOutputStream();
         ImageIO.write(img, "PNG", b);
         return new ByteArrayInputStream(b.toByteArray());
+    }
+
+    // =====================================================================
+// BÀI CÀO — 2 hàng x 3 lá
+// =====================================================================
+    public static InputStream drawBaicaoTable(
+            List<com.vinhtran.dogbot.game.BaicaoGame.Card> pHand, int pScore,
+            List<com.vinhtran.dogbot.game.BaicaoGame.Card> dHand, int dScore) throws Exception {
+
+        // Chuyển BaicaoGame.Card → BlackjackGame.Card (cùng cấu trúc record)
+        List<BlackjackGame.Card> pCards = pHand.stream()
+                .map(c -> new BlackjackGame.Card(c.rank(), c.suitIndex()))
+                .toList();
+        List<BlackjackGame.Card> dCards = dHand.stream()
+                .map(c -> new BlackjackGame.Card(c.rank(), c.suitIndex()))
+                .toList();
+
+        int innerW = rowWidth(3);
+        int totalW = PAD * 2 + innerW;
+        int totalH = PAD
+                + LABEL_H + CARD_H + SCORE_H
+                + SECTION
+                + LABEL_H + CARD_H + SCORE_H
+                + PAD;
+
+        BufferedImage img = new BufferedImage(totalW, totalH, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D    g   = img.createGraphics();
+        setHints(g);
+
+        g.setColor(BG);
+        g.fillRoundRect(0, 0, totalW, totalH, 18, 18);
+
+        int y = PAD;
+
+        drawLabel(g, "Bai cua ban", PAD, y, totalW);
+        y += LABEL_H;
+        drawRow(g, pCards, y, totalW, false);
+        y += CARD_H;
+        drawScoreLine(g, pScore + " diem", y, totalW);
+        y += SCORE_H + SECTION;
+
+        drawLabel(g, "Bot", PAD, y, totalW);
+        y += LABEL_H;
+        drawRow(g, dCards, y, totalW, false);
+        y += CARD_H;
+        drawScoreLine(g, dScore + " diem", y, totalW);
+
+        g.dispose();
+        return toStream(img);
     }
 }
