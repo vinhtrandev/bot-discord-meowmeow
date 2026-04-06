@@ -1,6 +1,7 @@
 package com.vinhtran.dogbot.game;
 
 import com.vinhtran.dogbot.util.CardImageGenerator;
+import com.vinhtran.dogbot.game.BlackjackGame.Card; // Import class Card từ Blackjack
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
@@ -8,14 +9,14 @@ import java.util.Random;
 
 public class BaicaoGame {
 
-    // Giữ nguyên record cũ dùng List<Integer>
+    // Record lưu trữ thông tin bộ bài
     public record Hand(List<Integer> cards, int score, String rank) {}
 
     private final Random random = new Random();
 
     public Hand dealHand() {
         List<Integer> cards = new ArrayList<>();
-        // Chỉ lấy số từ 1-10 như cũ
+        // Lấy 3 lá ngẫu nhiên từ 1-10
         for (int i = 0; i < 3; i++) cards.add(random.nextInt(10) + 1);
 
         int score = cards.stream().mapToInt(Integer::intValue).sum() % 10;
@@ -24,12 +25,9 @@ public class BaicaoGame {
     }
 
     private String getRank(int score) {
-        return switch (score) {
-            case 9 -> "Cào 9 🔥";
-            case 8 -> "Cào 8";
-            case 0 -> "Bù (0)";
-            default -> "Điểm " + score;
-        };
+        if (score == 9) return "Cào 9 🔥";
+        if (score == 0) return "Bù (0)";
+        return "Điểm " + score;
     }
 
     public String determineResult(Hand player, Hand bot) {
@@ -39,18 +37,23 @@ public class BaicaoGame {
     }
 
     /**
-     * Hàm vẽ ảnh cho bài cào (phiên bản dùng Card mặc định)
+     * Hàm vẽ ảnh: Sử dụng trực tiếp drawTable của CardImageGenerator
      */
     public InputStream getTableImage(Hand pHand, Hand bHand) throws Exception {
-        // Vì CardImageGenerator yêu cầu List<Card>, ta convert nhanh từ Integer sang Card
-        List<com.vinhtran.dogbot.game.BlackjackGame.Card> pCards = pHand.cards().stream()
-                .map(rank -> new com.vinhtran.dogbot.game.BlackjackGame.Card(rank, 0)) // Mặc định chất bích (0)
+        // Convert List<Integer> sang List<Card> để Generator hiểu được
+        // Chúng ta mặc định Suit = 0 (Bích) vì bài cào cũ của bạn không chia chất
+        List<Card> pCards = pHand.cards().stream()
+                .map(val -> new Card(val, 0))
                 .toList();
-        List<com.vinhtran.dogbot.game.BlackjackGame.Card> bCards = bHand.cards().stream()
-                .map(rank -> new com.vinhtran.dogbot.game.BlackjackGame.Card(rank, 0))
+        List<Card> bCards = bHand.cards().stream()
+                .map(val -> new Card(val, 0))
                 .toList();
 
-        // Gọi hàm vẽ ảnh (Nếu CardImageGenerator của bạn nhận String pRank thì truyền pHand.rank())
-        return CardImageGenerator.drawBaicaoTableSimple(pCards, pHand.score(), bCards, bHand.score());
+        // Gọi hàm drawTable (Tham số cuối là false vì bài cào không giấu bài Bot)
+        return CardImageGenerator.drawTable(
+                pCards, pHand.score(),
+                bCards, bHand.score(),
+                false
+        );
     }
 }

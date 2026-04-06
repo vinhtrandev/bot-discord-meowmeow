@@ -8,13 +8,13 @@ import com.vinhtran.dogbot.service.UserService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import net.dv8tion.jda.api.EmbedBuilder;
-import net.dv8tion.jda.api.entities.MessageEmbed;
 import net.dv8tion.jda.api.events.message.MessageReceivedEvent;
 import net.dv8tion.jda.api.utils.FileUpload;
 import org.springframework.stereotype.Component;
 
 import java.awt.*;
 import java.io.InputStream;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Component
@@ -69,18 +69,18 @@ public class BaicaoCommand implements Command {
                 return;
             }
 
-            // 1. Khởi tạo Game
+            // Khởi tạo Game (Bản mặc định)
             BaicaoGame baicaoGame = new BaicaoGame();
             BaicaoGame.Hand playerHand = baicaoGame.dealHand();
             BaicaoGame.Hand botHand = baicaoGame.dealHand();
             String result = baicaoGame.determineResult(playerHand, botHand);
 
-            // 2. Ghi kết quả vào database
+            // Ghi kết quả
             gameService.recordResult(userId, "BAI_CAO", bet, result);
 
             String skinEmoji = getSkinEmoji(userId);
 
-            // 3. Thông báo cặp đôi (giống Blackjack)
+            // Thông báo cặp đôi
             coupleService.getPartnerId(userId).ifPresent(partnerId -> {
                 try {
                     String partnerName = userService.getUser(partnerId).getUsername();
@@ -89,7 +89,7 @@ public class BaicaoCommand implements Command {
                 } catch (Exception ignored) {}
             });
 
-            // 4. Xử lý logic hiển thị
+            // Xử lý thông báo Text
             String msg;
             Color color;
             switch (result) {
@@ -107,40 +107,33 @@ public class BaicaoCommand implements Command {
                 }
             }
 
-            // 5. Gửi kết quả (Sử dụng hàm build để giống Blackjack)
-            sendFinal(event, baicaoGame, playerHand, botHand, skinEmoji, msg, color);
+            // Chuyển List<Integer> thành String để hiển thị trong Embed (Fallback nếu ảnh lỗi)
+            String playerCardsText = playerHand.cards().stream()
+                    .map(String::valueOf)
+                    .collect(Collectors.joining(" "));
+            String botCardsText = botHand.cards().stream()
+                    .map(String::valueOf)
+                    .collect(Collectors.joining(" "));
+
+            // Gửi Embed kết quả kèm hình ảnh từ Generator
+            try (InputStream img = baicaoGame.getTableImage(playerHand, botHand)) {
+                event.getChannel().sendMessageEmbeds(
+                        new EmbedBuilder()
+                                .setTitle(skinEmoji + " Bài Cào — Kết quả")
+                                .setDescription(msg) // msg là chuỗi "Thắng/Thua/Hòa"
+                                .setImage("attachment://baicao.png")
+                                .setFooter("Bot Casino | Dealer: Random")
+                                .setColor(color)
+                                .build()
+                ).addFiles(FileUpload.fromData(img, "baicao.png")).queue();
+            }
 
         } catch (NumberFormatException e) {
             event.getChannel().sendMessage("Số coin không hợp lệ!").queue();
         } catch (Exception e) {
-            log.error("Lỗi BaicaoCommand userId={}", userId, e);
+            log.error("Lỗi BaicaoCommand", e);
             event.getChannel().sendMessage("Lỗi: " + e.getMessage()).queue();
         }
-    }
-
-    // Tách hàm gửi kết quả giống BlackjackCommand
-    private void sendFinal(MessageReceivedEvent event, BaicaoGame game,
-                           BaicaoGame.Hand pHand, BaicaoGame.Hand bHand,
-                           String skinEmoji, String msg, Color color) {
-        try (InputStream img = game.getTableImage(pHand, bHand)) {
-            event.getChannel().sendMessageEmbeds(buildFinalEmbed(skinEmoji, msg, color))
-                    .addFiles(FileUpload.fromData(img, "baicao.png"))
-                    .queue();
-        } catch (Exception e) {
-            log.error("Lỗi gửi ảnh bài cào", e);
-            event.getChannel().sendMessageEmbeds(buildFinalEmbed(skinEmoji, msg, color)).queue();
-        }
-    }
-
-    // Tách hàm build Embed giống BlackjackCommand
-    private MessageEmbed buildFinalEmbed(String skinEmoji, String msg, Color color) {
-        return new EmbedBuilder()
-                .setTitle(skinEmoji + " Bài Cào — Kết quả")
-                .setDescription(msg)
-                .setImage("attachment://baicao.png")
-                .setFooter("Bot Casino | Dealer: Random | Cào 9 🔥")
-                .setColor(color)
-                .build();
     }
 
     private String getSkinEmoji(String userId) {
