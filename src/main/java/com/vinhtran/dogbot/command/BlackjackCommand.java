@@ -37,6 +37,15 @@ public class BlackjackCommand implements Command {
                 ? event.getMember().getEffectiveName()
                 : event.getAuthor().getName();
 
+        // ── Kiểm tra đăng ký ──────────────────────────────────
+        try {
+            userService.getUser(userId);
+        } catch (RuntimeException e) {
+            event.getChannel().sendMessage(
+                    "❌ Bạn chưa đăng ký! Dùng `!register` trước nhé.").queue();
+            return;
+        }
+
         if (args.length < 2) {
             event.getChannel().sendMessage("Dùng: `!blackjack <số coin hoặc all>`").queue();
             return;
@@ -187,14 +196,6 @@ public class BlackjackCommand implements Command {
     // =========================================================
     // EMBED BUILDERS — gọi từ ButtonListener
     // =========================================================
-
-    /**
-     * Embed đang chơi:
-     * - Title + cược
-     * - Hint dằn non nếu có
-     * - setImage("attachment://table.png") — ảnh ghép cả 2 bộ bài
-     * KHÔNG có field text bài (đã có trong ảnh)
-     */
     public MessageEmbed buildPlaying(BlackjackGame game, String skinEmoji,
                                      long bet, boolean doubled) {
         return buildPlayingEmbed(game, skinEmoji, bet, doubled);
