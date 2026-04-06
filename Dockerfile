@@ -4,8 +4,8 @@ WORKDIR /app
 COPY . .
 RUN mvn clean package -DskipTests
 
-# Stage 2: Chạy ứng dụng Java
-FROM openjdk:17-jdk-slim
+# Stage 2: Chạy ứng dụng Java (Sửa lỗi "not found" ở đây)
+FROM eclipse-temurin:17-jdk-focal
 WORKDIR /app
 # Copy file .jar từ thư mục target sang
 COPY --from=build /app/target/*.jar app.jar
