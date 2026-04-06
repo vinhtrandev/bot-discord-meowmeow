@@ -8,37 +8,26 @@ import java.util.Random;
 
 public class BaicaoGame {
 
-    // Dùng chung cấu trúc Card để CardImageGenerator có thể vẽ được
-    public record Card(int rank, int suitIndex) {}
-    public record Hand(List<Card> cards, int score, String rank) {}
+    // Giữ nguyên record cũ dùng List<Integer>
+    public record Hand(List<Integer> cards, int score, String rank) {}
 
     private final Random random = new Random();
 
     public Hand dealHand() {
-        List<Card> cards = new ArrayList<>();
-        int totalScore = 0;
+        List<Integer> cards = new ArrayList<>();
+        // Chỉ lấy số từ 1-10 như cũ
+        for (int i = 0; i < 3; i++) cards.add(random.nextInt(10) + 1);
 
-        for (int i = 0; i < 3; i++) {
-            int rank = random.nextInt(13) + 1; // 1-13
-            int suit = random.nextInt(4);      // 0-3
-            cards.add(new Card(rank, suit));
-
-            // Tính điểm Bài Cào (J, Q, K tính là 10 hoặc 0 tùy luật, ở đây tính sum % 10)
-            totalScore += Math.min(rank, 10);
-        }
-
-        int finalScore = totalScore % 10;
-        return new Hand(cards, finalScore, getRankLabel(finalScore, cards));
+        int score = cards.stream().mapToInt(Integer::intValue).sum() % 10;
+        String rank = getRank(score);
+        return new Hand(cards, score, rank);
     }
 
-    private String getRankLabel(int score, List<Card> cards) {
-        // Kiểm tra Ba Tây (3 lá J, Q, K)
-        boolean isBaTay = cards.stream().allMatch(c -> c.rank() > 10);
-        if (isBaTay) return "Ba Tây 👑";
-
+    private String getRank(int score) {
         return switch (score) {
-            case 9  -> "Cào 9 🔥";
-            case 0  -> "Bù (0)";
+            case 9 -> "Cào 9 🔥";
+            case 8 -> "Cào 8";
+            case 0 -> "Bù (0)";
             default -> "Điểm " + score;
         };
     }
@@ -49,11 +38,19 @@ public class BaicaoGame {
         return "DRAW";
     }
 
-    // Hàm này sẽ gọi CardImageGenerator đã sửa
+    /**
+     * Hàm vẽ ảnh cho bài cào (phiên bản dùng Card mặc định)
+     */
     public InputStream getTableImage(Hand pHand, Hand bHand) throws Exception {
-        return CardImageGenerator.drawBaicaoTable(
-                pHand.cards(), pHand.rank(), //
-                bHand.cards(), bHand.rank()  //
-        );
+        // Vì CardImageGenerator yêu cầu List<Card>, ta convert nhanh từ Integer sang Card
+        List<com.vinhtran.dogbot.game.BlackjackGame.Card> pCards = pHand.cards().stream()
+                .map(rank -> new com.vinhtran.dogbot.game.BlackjackGame.Card(rank, 0)) // Mặc định chất bích (0)
+                .toList();
+        List<com.vinhtran.dogbot.game.BlackjackGame.Card> bCards = bHand.cards().stream()
+                .map(rank -> new com.vinhtran.dogbot.game.BlackjackGame.Card(rank, 0))
+                .toList();
+
+        // Gọi hàm vẽ ảnh (Nếu CardImageGenerator của bạn nhận String pRank thì truyền pHand.rank())
+        return CardImageGenerator.drawBaicaoTableSimple(pCards, pHand.score(), bCards, bHand.score());
     }
 }
