@@ -21,6 +21,6 @@ public class BotDeployer {
                 "Fix lỗi hiển thị sai tên người dùng"
         );
 
-        deployManager.deploy(jda, "1491532922803454024", changes);
+        deployManager.deploy(jda, "1491539644515483668", changes);
     }
 }
