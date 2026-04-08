@@ -34,9 +34,12 @@ public class MessageListener extends ListenerAdapter {
         String raw = event.getMessage().getContentRaw().trim();
         if (!raw.startsWith("!")) return;
 
-        if (maintenanceService.isMaintenance()) {
-            event.getChannel().sendMessage(
-                    "⚠️ Bot đang bảo trì! Vui lòng thử lại sau.").queue();
+        // Chặn tất cả lệnh (kể cả !maintenance off) khi đang bảo trì,
+        // ngoại trừ lệnh !maintenance để admin có thể tắt nếu cần
+        if (maintenanceService.isMaintenance() && !raw.startsWith("!maintenance")) {
+            event.getChannel()
+                    .sendMessage("⚠️ **Bot đang bảo trì!** Vui lòng thử lại sau.")
+                    .queue();
             return;
         }
 

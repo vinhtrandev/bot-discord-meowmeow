@@ -1,89 +1,97 @@
 package com.vinhtran.dogbot.service;
 
+import jakarta.annotation.PostConstruct;
+import lombok.extern.slf4j.Slf4j;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
 import org.springframework.stereotype.Service;
+import redis.clients.jedis.Jedis;
+import redis.clients.jedis.JedisPool;
+import redis.clients.jedis.JedisPoolConfig;
 
+import java.net.URI;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 
+@Slf4j
 @Service
 public class MaintenanceService {
 
-    private boolean maintenance = false;
+    private static final String MAINTENANCE_KEY = "maintenance";
+
+    private final JedisPool jedisPool;
     private String version = "1.0.0";
     private final List<String> changes = new ArrayList<>();
-
     private final DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
-    // ----------------------------------------
-    // Bật / tắt bảo trì
-    // ----------------------------------------
+    public MaintenanceService() {
+        String redisUrl = System.getenv("REDIS_URL");
+        this.jedisPool = new JedisPool(new JedisPoolConfig(), URI.create(redisUrl));
+        log.info("✅ Đã kết nối Redis: {}", redisUrl);
+    }
+
+    @PostConstruct
+    public void init() {
+        if (isMaintenance()) {
+            log.info("⚠️  Bot đang ở chế độ bảo trì (đọc từ Redis).");
+        }
+    }
+
     public void enableMaintenance() {
-        this.maintenance = true;
+        try (Jedis jedis = jedisPool.getResource()) {
+            jedis.set(MAINTENANCE_KEY, "true");
+            log.info("🔧 Đã bật bảo trì.");
+        }
     }
 
     public void disableMaintenance() {
-        this.maintenance = false;
+        try (Jedis jedis = jedisPool.getResource()) {
+            jedis.del(MAINTENANCE_KEY);
+            log.info("✅ Đã tắt bảo trì.");
+        }
     }
 
     public boolean isMaintenance() {
-        return maintenance;
+        try (Jedis jedis = jedisPool.getResource()) {
+            return "true".equals(jedis.get(MAINTENANCE_KEY));
+        }
     }
 
-    // ----------------------------------------
-    // Version
-    // ----------------------------------------
-    public String getVersion() {
-        return version;
-    }
-
-    public void setVersion(String version) {
-        this.version = version;
-    }
+    public String getVersion() { return version; }
+    public void setVersion(String version) { this.version = version; }
 
     public void nextPatchVersion() {
         String[] parts = version.split("\\.");
-        int major = Integer.parseInt(parts[0]);
-        int minor = Integer.parseInt(parts[1]);
-        int patch = Integer.parseInt(parts[2]);
-        patch++;
-        this.version = major + "." + minor + "." + patch;
+        int patch = Integer.parseInt(parts[2]) + 1;
+        this.version = parts[0] + "." + parts[1] + "." + patch;
+        log.info("📌 Version mới: {}", this.version);
     }
 
-    // ----------------------------------------
-    // Change log
-    // ----------------------------------------
-    public void addChange(String change) {
-        changes.add(change);
-    }
+    public void addChange(String change) { changes.add(change); }
+    public List<String> getChanges() { return new ArrayList<>(changes); }
+    public void clearChanges() { changes.clear(); }
 
-    public List<String> getChanges() {
-        return new ArrayList<>(changes);
-    }
-
-    public void clearChanges() {
-        changes.clear();
-    }
-
-    // ----------------------------------------
-    // Thông báo deploy lên channel Discord
-    // ----------------------------------------
     public void announceDeploy(JDA jda, String channelId) {
         TextChannel channel = jda.getTextChannelById(channelId);
-        if (channel == null) return;
+        if (channel == null) {
+            log.warn("⚠️  Không tìm thấy channel: {}", channelId);
+            return;
+        }
 
         StringBuilder sb = new StringBuilder();
         sb.append("🚀 **Bot đã deploy xong!**\n");
         sb.append("📅 Ngày: ").append(LocalDate.now().format(dateFormatter)).append("\n");
-        sb.append("📌 Phiên bản: ").append(version).append("\n");
+        sb.append("📌 Phiên bản: **").append(version).append("**\n");
         sb.append("✨ Thay đổi:\n");
         for (String c : changes) {
             sb.append("• ").append(c).append("\n");
         }
 
-        channel.sendMessage(sb.toString()).queue();
+        channel.sendMessage(sb.toString()).queue(
+                ok -> log.info("✅ Đã thông báo deploy."),
+                err -> log.error("❌ Lỗi gửi thông báo", err)
+        );
     }
 }

@@ -1,0 +1,10 @@
+services:
+  dogbot:
+    build: .
+    container_name: dogbot
+    restart: unless-stopped
+    stop_grace_period: 30s
+    volumes:
+      - ./data:/app/data
+    env_file:
+      - .env
