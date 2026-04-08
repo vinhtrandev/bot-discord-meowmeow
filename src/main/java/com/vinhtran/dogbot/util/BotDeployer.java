@@ -26,7 +26,8 @@ public class BotDeployer {
         List<String> changes = List.of(
                 "Cập nhật Blackjack, bài cào logic game chuẩn bài truyền thống Việt Nam",
                 "Cập nhật giao diện người dùng độc quyền Meow Meow",
-                "Fix lỗi hiển thị sai tên người dùng"
+                "Fix lỗi hiển thị sai tên người dùng",
+                "Test tính năng bảo trì tự động"  // ← thêm dòng này
         );
 
         deployManager.onDeployComplete(jda, ANNOUNCE_CHANNEL_ID, changes);
