@@ -1,5 +1,6 @@
 package com.vinhtran.dogbot.bot.listener;
 
+import com.vinhtran.dogbot.command.BaicaoCommand;
 import com.vinhtran.dogbot.command.BlackjackCommand;
 import com.vinhtran.dogbot.game.BlackjackGame;
 import com.vinhtran.dogbot.game.GameResult;
@@ -29,6 +30,7 @@ public class ButtonListener extends ListenerAdapter {
     private final CoupleService           coupleService;
     private final UserService             userService;
     private final BlackjackCommand        blackjackCommand;
+    private final BaicaoCommand           baicaoCommand;  // ← thêm
 
     @Override
     public void onButtonInteraction(ButtonInteractionEvent event) {
@@ -36,6 +38,8 @@ public class ButtonListener extends ListenerAdapter {
             String[] parts = event.getComponentId().split(":");
             if (parts[0].startsWith("bj_")) {
                 handleBlackjack(event, parts);
+            } else if (parts[0].startsWith("bc_")) {
+                handleBaicao(event, parts);
             } else if (parts[0].equals("transfer_confirm") || parts[0].equals("transfer_cancel")) {
                 handleTransfer(event, parts);
             }
@@ -80,7 +84,7 @@ public class ButtonListener extends ListenerAdapter {
                 if (game.playerBust()) {
                     gameService.recordResult(userId, "BLACKJACK", bet, "LOSE");
                     bjService.clear(userId);
-                    editFinal(event, game, skinEmoji,
+                    editFinal(event, game, skinEmoji, username,
                             "💥 Quắc! **" + username + "** thua **" + bet + " coin**",
                             Color.RED);
                 } else if (game.isPlayerNguLinh()) {
@@ -89,9 +93,9 @@ public class ButtonListener extends ListenerAdapter {
                     String msg   = buildMsg(result, username, bet, prize, false);
                     gameService.recordResult(userId, "BLACKJACK", bet, toSimple(result));
                     bjService.clear(userId);
-                    editFinal(event, game, skinEmoji, msg, resultColor(result));
+                    editFinal(event, game, skinEmoji, username, msg, resultColor(result));
                 } else {
-                    editPlaying(event, game, skinEmoji, userId, bet, false);
+                    editPlaying(event, game, skinEmoji, userId, username, bet, false);
                 }
             }
 
@@ -99,7 +103,7 @@ public class ButtonListener extends ListenerAdapter {
                 if (!game.canPlayerStand()) {
                     gameService.recordResult(userId, "BLACKJACK", bet, "LOSE");
                     bjService.clear(userId);
-                    editFinal(event, game, skinEmoji,
+                    editFinal(event, game, skinEmoji, username,
                             "🔴 Dằn non! **" + username + "** chưa đủ 16 điểm → Thua **" + bet + " coin**",
                             Color.RED);
                     return;
@@ -109,7 +113,7 @@ public class ButtonListener extends ListenerAdapter {
                 String msg   = buildMsg(result, username, bet, prize, false);
                 gameService.recordResult(userId, "BLACKJACK", bet, toSimple(result));
                 bjService.clear(userId);
-                editFinal(event, game, skinEmoji, msg, resultColor(result));
+                editFinal(event, game, skinEmoji, username, msg, resultColor(result));
             }
 
             case "double" -> {
@@ -126,7 +130,7 @@ public class ButtonListener extends ListenerAdapter {
                 if (game.playerBust()) {
                     gameService.recordResult(userId, "BLACKJACK", newBet, "LOSE");
                     bjService.clear(userId);
-                    editFinal(event, game, skinEmoji,
+                    editFinal(event, game, skinEmoji, username,
                             "💥 Quắc! **" + username + "** thua **" + newBet + " coin** (Gấp đôi)",
                             Color.RED);
                 } else {
@@ -135,7 +139,7 @@ public class ButtonListener extends ListenerAdapter {
                     String msg   = buildMsg(result, username, newBet, prize, true);
                     gameService.recordResult(userId, "BLACKJACK", newBet, toSimple(result));
                     bjService.clear(userId);
-                    editFinal(event, game, skinEmoji, msg, resultColor(result));
+                    editFinal(event, game, skinEmoji, username, msg, resultColor(result));
                 }
             }
         }
@@ -143,9 +147,10 @@ public class ButtonListener extends ListenerAdapter {
 
     // ── Edit embed đang chơi ─────────────────────────────────────────────
     private void editPlaying(ButtonInteractionEvent event, BlackjackGame game,
-                             String skinEmoji, String userId, long bet, boolean doubled) {
+                             String skinEmoji, String userId, String username,
+                             long bet, boolean doubled) {
         try {
-            InputStream img = game.getTableImagePlaying();
+            InputStream img = game.getTableImagePlaying(username);
             event.getHook()
                     .editOriginalEmbeds(blackjackCommand.buildPlaying(game, skinEmoji, bet, doubled))
                     .setFiles(FileUpload.fromData(img, "table.png"))
@@ -159,11 +164,12 @@ public class ButtonListener extends ListenerAdapter {
         }
     }
 
-    // ── Edit embed kết quả ───────────────────────────────────────────────
+    // ── Edit embed kết quả blackjack ─────────────────────────────────────
     private void editFinal(ButtonInteractionEvent event, BlackjackGame game,
-                           String skinEmoji, String msg, Color color) {
+                           String skinEmoji, String username,
+                           String msg, Color color) {
         try {
-            InputStream img = game.getTableImageFinal();
+            InputStream img = game.getTableImageFinal(username);
             event.getHook()
                     .editOriginalEmbeds(blackjackCommand.buildFinal(game, skinEmoji, msg, color))
                     .setFiles(FileUpload.fromData(img, "table.png"))
@@ -171,11 +177,30 @@ public class ButtonListener extends ListenerAdapter {
                     .queue();
         } catch (Exception e) {
             e.printStackTrace();
-            // fallback không ảnh
             event.getHook()
                     .editOriginalEmbeds(blackjackCommand.buildFinal(game, skinEmoji, msg, color))
                     .setComponents()
                     .queue();
+        }
+    }
+
+    // =========================================================
+    // BÀI CÀO
+    // =========================================================
+    private void handleBaicao(ButtonInteractionEvent event, String[] parts) {
+        String action = parts[0];
+        String userId = parts[1];
+        long   bet    = Long.parseLong(parts[2]);
+
+        if (!event.getUser().getId().equals(userId)) {
+            event.reply("Đây không phải ván của bạn!").setEphemeral(true).queue();
+            return;
+        }
+
+        if (action.equals("bc_open")) {
+            baicaoCommand.handleOpen(event, userId, bet);
+        } else if (action.equals("bc_double")) {
+            baicaoCommand.handleDouble(event, userId, bet);
         }
     }
 
@@ -233,7 +258,7 @@ public class ButtonListener extends ListenerAdapter {
     }
 
     // =========================================================
-    // HELPER
+    // HELPER BLACKJACK
     // =========================================================
     private long calcPrize(GameResult result, long bet, boolean doubled) {
         return switch (result) {

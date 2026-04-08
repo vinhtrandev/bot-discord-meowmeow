@@ -132,30 +132,24 @@ public class BlackjackGame {
     }
 
     // =====================================================================
-    // ẢNH — 1 ảnh duy nhất chứa cả player + dealer
+    // ẢNH — chỉ thêm tham số username, logic không đổi
     // =====================================================================
 
-    /**
-     * Ảnh đang chơi: dealer lá cuối bị úp.
-     * Gọi từ BlackjackCommand / ButtonListener khi ván chưa kết thúc.
-     */
-    public InputStream getTableImagePlaying() throws Exception {
+    public InputStream getTableImagePlaying(String username) throws Exception {
         return CardImageGenerator.drawTable(
                 playerHand, getPlayerScore(),
                 dealerHand, getDealerScore(),
-                true   // hideDealerLast = true
+                true,
+                username
         );
     }
 
-    /**
-     * Ảnh kết quả: lật hết bài dealer.
-     * Gọi khi ván kết thúc.
-     */
-    public InputStream getTableImageFinal() throws Exception {
+    public InputStream getTableImageFinal(String username) throws Exception {
         return CardImageGenerator.drawTable(
                 playerHand, getPlayerScore(),
                 dealerHand, getDealerScore(),
-                false  // hideDealerLast = false
+                false,
+                username
         );
     }
 

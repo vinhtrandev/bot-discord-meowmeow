@@ -11,36 +11,32 @@ import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.util.List;
 
-/**
- * Vẽ ảnh bài Xì Dách bằng Java2D.
- *
- * Giải pháp 1 ảnh duy nhất:
- * drawTable(playerHand, playerScore, dealerHand, dealerScore, hideDealerLast)
- * → ghép cả 2 bộ bài (player + dealer) vào 1 ảnh PNG
- * → Discord embed chỉ cần 1 setImage("attachment://table.png")
- */
 public class CardImageGenerator {
 
-    // ── Kích thước lá bài ────────────────────────────────────────────────
-    private static final int CARD_W   = 90;
-    private static final int CARD_H   = 126;
-    private static final int RADIUS   = 10;
-    private static final int GAP      = 10;   // khoảng cách giữa các lá (không chồng)
-    private static final int PAD      = 16;
-    private static final int LABEL_H  = 28;   // chiều cao label "Bài của bạn" / "Bot"
-    private static final int SCORE_H  = 30;   // chiều cao dòng điểm
-    private static final int SECTION  = 12;   // khoảng cách giữa 2 bộ bài
+    private static final int CARD_W    = 46;
+    private static final int CARD_H    = 64;
+    private static final int RADIUS    = 7;
+    private static final int GAP       = 5;
+    private static final int PAD_X     = 20;
+    private static final int PAD_Y     = 20;
+    private static final int ROW_GAP   = 14;
+    private static final int LABEL_H   = 20;
+    private static final int MAX_CARDS = 6;
 
-    // ── Màu ──────────────────────────────────────────────────────────────
-    private static final Color BG          = new Color(28,  30,  36);
-    private static final Color CARD_BG     = new Color(255, 252, 235);
-    private static final Color CARD_BORDER = new Color(190, 165, 100);
-    private static final Color BACK_BASE   = new Color(25,  60,  130);
-    private static final Color BACK_LINE   = new Color(15,  40,   90);
-    private static final Color SCORE_CLR   = new Color(255, 215,  60);
-    private static final Color LABEL_CLR   = new Color(200, 200, 210);
-    private static final Color RED_SUIT    = new Color(210,  30,  30);
-    private static final Color BLACK_SUIT  = new Color(15,   15,  15);
+    private static final Color BG           = new Color(24,  26,  32);
+    private static final Color CARD_FACE    = new Color(255, 252, 235);
+    private static final Color CARD_BORDER  = new Color(180, 150,  85);
+    private static final Color BACK_BASE    = new Color(22,  55, 120);
+    private static final Color BACK_STRIPE  = new Color(14,  37,  85);
+    private static final Color SCORE_CLR    = new Color(255, 215,  55);
+    private static final Color LABEL_CLR    = new Color(210, 210, 220);
+    private static final Color RED_CLR      = new Color(210,  30,  30);
+    private static final Color BLACK_CLR    = new Color(15,   15,  15);
+    private static final Color RESULT_TITLE = new Color(190, 190, 200);
+    private static final Color WIN_CLR      = new Color( 80, 220, 110);
+    private static final Color LOSE_CLR     = new Color(220,  70,  70);
+    private static final Color DRAW_CLR     = new Color(220, 200,  60);
+    private static final Color DIVIDER_CLR  = new Color( 60,  63,  72);
 
     private static final String[] SUIT_SYM  = {"♠", "♥", "♦", "♣"};
     private static final String[] RANK_NAME = {
@@ -52,115 +48,167 @@ public class CardImageGenerator {
     // =====================================================================
 
     /**
-     * Vẽ toàn bộ bàn chơi (player + dealer) thành 1 PNG duy nhất.
+     * Vẽ bàn chơi — không có kết quả (đang chơi).
      */
     public static InputStream drawTable(List<Card> pHand, int pScore,
                                         List<Card> dHand, int dScore,
-                                        boolean hideDealerLast) throws Exception {
-        int pW = rowWidth(pHand.size());
-        int dW = rowWidth(dHand.size());
-        int totalW = PAD + Math.max(pW, dW) + PAD;
-        int totalH = PAD
-                + LABEL_H + CARD_H + SCORE_H   // player row
-                + SECTION
-                + LABEL_H + CARD_H + SCORE_H   // dealer row
-                + PAD;
+                                        boolean hideDealerLast,
+                                        String playerLabel) throws Exception {
+        return drawTable(pHand, pScore, dHand, dScore, hideDealerLast, playerLabel, null);
+    }
+
+    /**
+     * Vẽ bàn chơi với tuỳ chọn hiện kết quả ở cuối.
+     *
+     * @param playerLabel  Tên người chơi hiển thị (đầy đủ, không cắt)
+     * @param resultLines  null = không hiện kết quả
+     */
+    public static InputStream drawTable(List<Card> pHand, int pScore,
+                                        List<Card> dHand, int dScore,
+                                        boolean hideDealerLast,
+                                        String playerLabel,
+                                        String[] resultLines) throws Exception {
+
+        String label = (playerLabel == null || playerLabel.isBlank()) ? "Bạn" : playerLabel;
+
+        int cardAreaW = MAX_CARDS * CARD_W + (MAX_CARDS - 1) * GAP;
+        int scoreW    = 80;
+        int totalW    = PAD_X + cardAreaW + scoreW + PAD_X;
+
+        int oneRowH  = LABEL_H + CARD_H;
+        int resultH  = (resultLines != null && resultLines.length > 0)
+                ? (10 + 26 * resultLines.length + 6) : 0;
+        int totalH   = PAD_Y
+                + oneRowH + ROW_GAP + oneRowH
+                + (resultLines != null ? 14 : 0)
+                + resultH
+                + PAD_Y;
 
         BufferedImage img = new BufferedImage(totalW, totalH, BufferedImage.TYPE_INT_ARGB);
         Graphics2D    g   = img.createGraphics();
         setHints(g);
 
-        // Nền bo góc
+        // Nền
         g.setColor(BG);
-        g.fillRoundRect(0, 0, totalW, totalH, 18, 18);
+        g.fillRoundRect(0, 0, totalW, totalH, 14, 14);
 
-        int y = PAD;
+        int y = PAD_Y;
 
-        // ── Bộ bài người chơi ──
-        drawLabel(g, "🙋 Bài của bạn", PAD, y, totalW);
-        y += LABEL_H;
-        drawRow(g, pHand, PAD, y, totalW, false);
-        y += CARD_H;
-        drawScoreLine(g, pScore + " điểm", PAD, y, totalW);
-        y += SCORE_H + SECTION;
+        // Dòng người chơi
+        drawBaiRow(g, label + ":", pHand, pScore + " điểm", false,
+                PAD_X, y, cardAreaW, scoreW);
+        y += oneRowH + ROW_GAP;
 
-        // ── Bộ bài dealer ──
-        drawLabel(g, "🤖 Bot", PAD, y, totalW);
-        y += LABEL_H;
-        drawRow(g, dHand, PAD, y, totalW, hideDealerLast);
-        y += CARD_H;
-        String dScoreText = hideDealerLast ? "? điểm" : dScore + " điểm";
-        drawScoreLine(g, dScoreText, PAD, y, totalW);
+        // Dòng bot
+        String dScoreStr = hideDealerLast ? "?" : dScore + " điểm";
+        drawBaiRow(g, "Bot:", dHand, dScoreStr, hideDealerLast,
+                PAD_X, y, cardAreaW, scoreW);
+        y += oneRowH;
+
+        // Kết quả
+        if (resultLines != null && resultLines.length > 0) {
+            y += 10;
+            g.setColor(DIVIDER_CLR);
+            g.setStroke(new BasicStroke(1f));
+            g.drawLine(PAD_X, y, totalW - PAD_X, y);
+            y += 8;
+
+            g.setFont(new Font("SansSerif", Font.BOLD, 13));
+            g.setColor(RESULT_TITLE);
+            g.drawString("Kết quả:", PAD_X, y + g.getFontMetrics().getAscent());
+            y += 22;
+
+            for (int i = 0; i < resultLines.length; i++) {
+                String line = resultLines[i];
+                g.setFont(new Font("SansSerif", Font.BOLD, i == 0 ? 16 : 15));
+                if (line.startsWith("+"))                                   g.setColor(WIN_CLR);
+                else if (line.startsWith("-"))                              g.setColor(LOSE_CLR);
+                else if (line.contains("thắng") || line.contains("Thắng")) g.setColor(WIN_CLR);
+                else if (line.contains("thua")  || line.contains("Thua"))  g.setColor(LOSE_CLR);
+                else if (line.contains("Hòa")   || line.contains("hòa"))   g.setColor(DRAW_CLR);
+                else                                                        g.setColor(SCORE_CLR);
+                g.drawString(line, PAD_X, y + g.getFontMetrics().getAscent());
+                y += 26;
+            }
+        }
 
         g.dispose();
         return toStream(img);
     }
 
     // =====================================================================
-    // INTERNAL — vẽ 1 hàng bài
+    // VẼ 1 ROW: tên ở trên, bài + score ở dưới
     // =====================================================================
-    private static void drawRow(Graphics2D g, List<Card> hand,
-                                int startX, int y, int totalW, boolean hideLast) {
-        int n     = hand.size();
-        int rowW  = rowWidth(n);
-        int offX  = startX + (totalW - 2 * startX - rowW) / 2; // căn giữa
+    private static void drawBaiRow(Graphics2D g,
+                                   String label,
+                                   List<Card> hand,
+                                   String scoreText,
+                                   boolean hideLast,
+                                   int startX, int y,
+                                   int cardAreaW, int scoreW) {
+        // ── Tên người chơi (dòng trên) ───────────────────────────────────
+        g.setFont(new Font("SansSerif", Font.BOLD, 13));
+        g.setColor(LABEL_CLR);
+        FontMetrics fm = g.getFontMetrics();
+        g.drawString(label, startX, y + fm.getAscent());
 
-        for (int i = 0; i < n; i++) {
-            int x    = offX + i * (CARD_W + GAP);
-            boolean back = hideLast && (i == n - 1);
-            if (back) drawBack(g, x, y);
-            else      drawFront(g, x, y, hand.get(i));
+        int cardY = y + LABEL_H;
+
+        // ── Các lá bài ───────────────────────────────────────────────────
+        for (int i = 0; i < hand.size(); i++) {
+            int cx = startX + i * (CARD_W + GAP);
+            if (hideLast && i == hand.size() - 1) drawBack(g, cx, cardY);
+            else                                   drawFront(g, cx, cardY, hand.get(i));
         }
-    }
 
-    private static int rowWidth(int n) {
-        return n * CARD_W + (n - 1) * GAP;
+        // ── Score ─────────────────────────────────────────────────────────
+        g.setFont(new Font("SansSerif", Font.BOLD, 14));
+        g.setColor(SCORE_CLR);
+        FontMetrics sfm = g.getFontMetrics();
+        String bracket = "[" + scoreText + "]";
+        int scoreX = startX + cardAreaW + 8;
+        int scoreY = cardY + (CARD_H + sfm.getAscent() - sfm.getDescent()) / 2 - sfm.getDescent();
+        g.drawString(bracket, scoreX, scoreY);
     }
 
     // =====================================================================
     // VẼ LÁ BÀI MẶT TRƯỚC
     // =====================================================================
     private static void drawFront(Graphics2D g, int x, int y, Card card) {
-        // Nền
-        g.setColor(CARD_BG);
+        g.setColor(CARD_FACE);
         g.fill(shape(x, y, CARD_W, CARD_H));
 
-        // Viền
         g.setColor(CARD_BORDER);
-        g.setStroke(new BasicStroke(1.6f));
+        g.setStroke(new BasicStroke(1.5f));
         g.draw(shape(x + 0.8f, y + 0.8f, CARD_W - 1.6f, CARD_H - 1.6f));
 
         boolean red   = card.suitIndex() == 1 || card.suitIndex() == 2;
-        Color   color = red ? RED_SUIT : BLACK_SUIT;
+        Color   color = red ? RED_CLR : BLACK_CLR;
         String  rank  = RANK_NAME[card.rank()];
         String  suit  = SUIT_SYM[card.suitIndex()];
         boolean is10  = rank.equals("10");
 
-        // ── Góc trên trái ────────────────────────────────────────────
         g.setColor(color);
-        g.setFont(new Font("SansSerif", Font.BOLD, is10 ? 15 : 18));
-        g.drawString(rank, x + 6, y + 20);
-        g.setFont(new Font("SansSerif", Font.PLAIN, 14));
-        g.drawString(suit, x + (is10 ? 4 : 7), y + 35);
+        g.setFont(new Font("SansSerif", Font.BOLD, is10 ? 11 : 13));
+        g.drawString(rank, x + 4, y + 14);
+        g.setFont(new Font("SansSerif", Font.PLAIN, 10));
+        g.drawString(suit, x + (is10 ? 3 : 5), y + 26);
 
-        // ── Suit lớn giữa ────────────────────────────────────────────
-        g.setFont(new Font("SansSerif", Font.PLAIN, 42));
+        g.setFont(new Font("SansSerif", Font.PLAIN, 28));
         FontMetrics fm = g.getFontMetrics();
         int sw = fm.stringWidth(suit);
-        int sh = fm.getAscent();
         g.drawString(suit,
                 x + (CARD_W - sw) / 2,
-                y + (CARD_H + sh) / 2 - 6);
+                y + (CARD_H + fm.getAscent()) / 2 - 4);
 
-        // ── Góc dưới phải (xoay 180°) ────────────────────────────────
         Graphics2D r = (Graphics2D) g.create();
         r.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
         r.rotate(Math.PI, x + CARD_W / 2.0, y + CARD_H / 2.0);
         r.setColor(color);
-        r.setFont(new Font("SansSerif", Font.BOLD, is10 ? 15 : 18));
-        r.drawString(rank, x + 6, y + 20);
-        r.setFont(new Font("SansSerif", Font.PLAIN, 14));
-        r.drawString(suit, x + (is10 ? 4 : 7), y + 35);
+        r.setFont(new Font("SansSerif", Font.BOLD, is10 ? 11 : 13));
+        r.drawString(rank, x + 4, y + 14);
+        r.setFont(new Font("SansSerif", Font.PLAIN, 10));
+        r.drawString(suit, x + (is10 ? 3 : 5), y + 26);
         r.dispose();
     }
 
@@ -171,46 +219,25 @@ public class CardImageGenerator {
         g.setColor(BACK_BASE);
         g.fill(shape(x, y, CARD_W, CARD_H));
         g.setColor(CARD_BORDER);
-        g.setStroke(new BasicStroke(1.6f));
+        g.setStroke(new BasicStroke(1.5f));
         g.draw(shape(x + 0.8f, y + 0.8f, CARD_W - 1.6f, CARD_H - 1.6f));
 
         Shape clip = shape(x + 3, y + 3, CARD_W - 6, CARD_H - 6);
         g.setClip(clip);
-        g.setColor(BACK_LINE);
+        g.setColor(BACK_STRIPE);
         g.setStroke(new BasicStroke(1f));
-        for (int d = -(CARD_H + CARD_W); d < CARD_W + CARD_H; d += 9) {
+        for (int d = -(CARD_H + CARD_W); d < CARD_W + CARD_H; d += 8) {
             g.drawLine(x + d, y, x + d + CARD_H, y + CARD_H);
             g.drawLine(x + d + CARD_H, y, x + d, y + CARD_H);
         }
         g.setClip(null);
 
-        g.setColor(CARD_BORDER);
-        g.setStroke(new BasicStroke(1f));
-        g.draw(shape(x + 7, y + 7, CARD_W - 14, CARD_H - 14));
-
-        g.setColor(new Color(255, 255, 255, 210));
-        g.setFont(new Font("SansSerif", Font.BOLD, 36));
+        g.setColor(new Color(255, 255, 255, 200));
+        g.setFont(new Font("SansSerif", Font.BOLD, 24));
         FontMetrics fm = g.getFontMetrics();
         g.drawString("?",
                 x + (CARD_W - fm.stringWidth("?")) / 2,
                 y + (CARD_H + fm.getAscent()) / 2 - 4);
-    }
-
-    // =====================================================================
-    // LABEL & SCORE
-    // =====================================================================
-    private static void drawLabel(Graphics2D g, String text, int x, int y, int totalW) {
-        g.setFont(new Font("SansSerif", Font.BOLD, 15));
-        g.setColor(LABEL_CLR);
-        FontMetrics fm = g.getFontMetrics();
-        g.drawString(text, x, y + fm.getAscent());
-    }
-
-    private static void drawScoreLine(Graphics2D g, String text, int x, int y, int totalW) {
-        g.setFont(new Font("SansSerif", Font.BOLD, 17));
-        g.setColor(SCORE_CLR);
-        FontMetrics fm = g.getFontMetrics();
-        g.drawString(text, (totalW - fm.stringWidth(text)) / 2, y + fm.getAscent());
     }
 
     // =====================================================================

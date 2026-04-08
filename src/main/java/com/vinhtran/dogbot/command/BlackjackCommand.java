@@ -100,7 +100,7 @@ public class BlackjackCommand implements Command {
             if (game.isPlayerXiBang() && game.isDealerXiBang()) {
                 gameService.recordResult(userId, "BLACKJACK", bet, "DRAW");
                 bjService.clear(userId);
-                sendFinal(event, game, skinEmoji,
+                sendFinal(event, game, skinEmoji, username,
                         "🤝 Cả hai đều Xì Bàn! Hòa — hoàn lại **" + bet + " coin**",
                         Color.YELLOW);
                 return;
@@ -109,7 +109,7 @@ public class BlackjackCommand implements Command {
             if (game.isPlayerXiBang()) {
                 gameService.recordResult(userId, "BLACKJACK", bet * 2, "WIN");
                 bjService.clear(userId);
-                sendFinal(event, game, skinEmoji,
+                sendFinal(event, game, skinEmoji, username,
                         "🃏🃏 XÌ BÀN! **" + username + "** thắng **" + (bet * 2) + " coin**! (x2)",
                         Color.YELLOW);
                 return;
@@ -118,7 +118,7 @@ public class BlackjackCommand implements Command {
             if (game.isDealerXiBang()) {
                 gameService.recordResult(userId, "BLACKJACK", bet, "LOSE");
                 bjService.clear(userId);
-                sendFinal(event, game, skinEmoji,
+                sendFinal(event, game, skinEmoji, username,
                         "😢 Bot có Xì Bàn! **" + username + "** thua **" + bet + " coin**",
                         Color.RED);
                 return;
@@ -127,7 +127,7 @@ public class BlackjackCommand implements Command {
             if (game.isPlayerXiDach() && game.isDealerXiDach()) {
                 gameService.recordResult(userId, "BLACKJACK", bet, "DRAW");
                 bjService.clear(userId);
-                sendFinal(event, game, skinEmoji,
+                sendFinal(event, game, skinEmoji, username,
                         "🤝 Cả hai đều Xì Dách! Hòa — hoàn lại **" + bet + " coin**",
                         Color.YELLOW);
                 return;
@@ -136,7 +136,7 @@ public class BlackjackCommand implements Command {
             if (game.isPlayerXiDach()) {
                 gameService.recordResult(userId, "BLACKJACK", bet, "WIN");
                 bjService.clear(userId);
-                sendFinal(event, game, skinEmoji,
+                sendFinal(event, game, skinEmoji, username,
                         "🃏 XÌ DÁCH! **" + username + "** thắng **" + bet + " coin**!",
                         Color.YELLOW);
                 return;
@@ -145,14 +145,14 @@ public class BlackjackCommand implements Command {
             if (game.isDealerXiDach()) {
                 gameService.recordResult(userId, "BLACKJACK", bet, "LOSE");
                 bjService.clear(userId);
-                sendFinal(event, game, skinEmoji,
+                sendFinal(event, game, skinEmoji, username,
                         "😢 Bot có Xì Dách! **" + username + "** thua **" + bet + " coin**",
                         Color.RED);
                 return;
             }
 
             // Nếu không có bộ đặc biệt thì bắt đầu lượt rút bài
-            sendPlaying(event, game, skinEmoji, userId, bet, false);
+            sendPlaying(event, game, skinEmoji, userId, username, bet, false);
 
         } catch (NumberFormatException e) {
             event.getChannel().sendMessage("Số coin không hợp lệ!").queue();
@@ -162,10 +162,12 @@ public class BlackjackCommand implements Command {
         }
     }
 
+    // username thêm vào để truyền cho ảnh, không ảnh hưởng logic
     public void sendPlaying(MessageReceivedEvent event, BlackjackGame game,
-                            String skinEmoji, String userId, long bet, boolean doubled) {
+                            String skinEmoji, String userId, String username,
+                            long bet, boolean doubled) {
         try {
-            InputStream img = game.getTableImagePlaying();
+            InputStream img = game.getTableImagePlaying(username);
             event.getChannel()
                     .sendMessageEmbeds(buildPlayingEmbed(game, skinEmoji, bet, doubled))
                     .addFiles(FileUpload.fromData(img, "table.png"))
@@ -181,9 +183,9 @@ public class BlackjackCommand implements Command {
     }
 
     public void sendFinal(MessageReceivedEvent event, BlackjackGame game,
-                          String skinEmoji, String msg, Color color) {
+                          String skinEmoji, String username, String msg, Color color) {
         try {
-            InputStream img = game.getTableImageFinal();
+            InputStream img = game.getTableImageFinal(username);
             event.getChannel()
                     .sendMessageEmbeds(buildFinalEmbed(skinEmoji, msg, color))
                     .addFiles(FileUpload.fromData(img, "table.png"))
