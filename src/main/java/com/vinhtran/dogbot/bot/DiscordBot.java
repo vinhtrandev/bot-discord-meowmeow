@@ -2,16 +2,16 @@ package com.vinhtran.dogbot.bot;
 
 import com.vinhtran.dogbot.bot.listener.ButtonListener;
 import com.vinhtran.dogbot.bot.listener.MessageListener;
+import com.vinhtran.dogbot.bot.listener.ReadyListener;
 import lombok.RequiredArgsConstructor;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.JDABuilder;
 import net.dv8tion.jda.api.requests.GatewayIntent;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Component;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 
-import jakarta.annotation.PostConstruct;
-
-@Component
+@Configuration
 @RequiredArgsConstructor
 public class DiscordBot {
 
@@ -19,10 +19,11 @@ public class DiscordBot {
     private String token;
 
     private final MessageListener messageListener;
-    private final ButtonListener buttonListener; // ← THÊM CÁI NÀY
+    private final ButtonListener buttonListener;
+    private final ReadyListener readyListener;
 
-    @PostConstruct
-    public void start() throws Exception {
+    @Bean
+    public JDA jda() throws Exception {
         JDA jda = JDABuilder.createDefault(token)
                 .enableIntents(
                         GatewayIntent.MESSAGE_CONTENT,
@@ -30,13 +31,15 @@ public class DiscordBot {
                 )
                 .addEventListeners(
                         messageListener,
-                        buttonListener  // ← ĐĂNG KÝ CẢ HAI
+                        buttonListener,
+                        readyListener
                 )
                 .build()
                 .awaitReady();
 
-        jda.updateCommands().queue(); // xoa slash commands cu
+        jda.updateCommands().queue();
 
         System.out.println("Bot online: " + jda.getSelfUser().getName());
+        return jda; // ← trả về để Spring quản lý như 1 bean
     }
 }
