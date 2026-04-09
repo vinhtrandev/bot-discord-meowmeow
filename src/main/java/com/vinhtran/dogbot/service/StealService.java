@@ -12,7 +12,9 @@ import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.Random;
 
-@Service @RequiredArgsConstructor @Transactional
+@Service
+@RequiredArgsConstructor
+@Transactional
 public class StealService {
 
     private final StealCooldownRepository stealCooldownRepository;
@@ -40,7 +42,7 @@ public class StealService {
             }
         }
 
-        // Lấy coin trong ví của nạn nhân (chỉ trộm được ví, không trộm được ngân hàng)
+        // Lấy coin trong ví của nạn nhân
         UserCoin targetCoin = userCoinRepository.findByUserDiscordId(targetDiscordId)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy người dùng này!"));
 
@@ -58,12 +60,12 @@ public class StealService {
         }
         stealCooldownRepository.save(cooldown);
 
-        // 60% thành công, 40% thất bại
-        boolean success = random.nextInt(100) < 60;
+        // 50% thành công, 50% thất bại
+        boolean success = random.nextInt(100) < 50;
 
         if (success) {
-            // Trộm 10%-40% tiền trong ví nạn nhân
-            long stealPercent = 10 + random.nextInt(31);
+            // Trộm 10%-25% tiền trong ví nạn nhân
+            long stealPercent = 10 + random.nextInt(16); // 10 + [0-15] => 10%-25%
             long amount = Math.max(1, targetCoin.getBalance() * stealPercent / 100);
 
             targetCoin.setBalance(targetCoin.getBalance() - amount);
@@ -73,8 +75,9 @@ public class StealService {
             return new StealResult(true, amount,
                     "🦹 Trộm thành công! Bạn lấy được **" + amount + " 🪙** (" + stealPercent + "% ví)");
         } else {
-            // Thất bại → mất 10% tiền ví của kẻ trộm như tiền phạt
-            long penalty = Math.max(1, userService.getBalance(thiefDiscordId) / 10);
+            // Thất bại → mất 10%-15% tiền ví của kẻ trộm
+            long thiefBalance = userService.getBalance(thiefDiscordId);
+            long penalty = Math.max(1, thiefBalance * (10 + random.nextInt(6)) / 100); // 10% - 15%
             try { userService.updateBalance(thiefDiscordId, -penalty); } catch (Exception ignored) {}
 
             return new StealResult(false, penalty,

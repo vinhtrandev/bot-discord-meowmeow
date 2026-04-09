@@ -7,7 +7,6 @@ import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
 import org.springframework.stereotype.Service;
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.JedisPool;
-import redis.clients.jedis.JedisPoolConfig;
 
 import java.net.URI;
 import java.time.LocalDate;
@@ -20,17 +19,16 @@ import java.util.List;
 public class MaintenanceService {
 
     private static final String MAINTENANCE_KEY = "maintenance";
-
     private final JedisPool jedisPool;
+
+    public MaintenanceService(JedisPool jedisPool) {
+        this.jedisPool = jedisPool;
+        log.info("✅ Đã kết nối Redis");
+    }
+
     private String version = "1.0.0";
     private final List<String> changes = new ArrayList<>();
     private final DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy");
-
-    public MaintenanceService() {
-        String redisUrl = System.getenv("REDIS_URL");
-        this.jedisPool = new JedisPool(new JedisPoolConfig(), URI.create(redisUrl));
-        log.info("✅ Đã kết nối Redis: {}", redisUrl);
-    }
 
     @PostConstruct
     public void init() {
@@ -59,8 +57,13 @@ public class MaintenanceService {
         }
     }
 
-    public String getVersion() { return version; }
-    public void setVersion(String version) { this.version = version; }
+    public String getVersion() {
+        return version;
+    }
+
+    public void setVersion(String version) {
+        this.version = version;
+    }
 
     public void nextPatchVersion() {
         String[] parts = version.split("\\.");
@@ -69,9 +72,17 @@ public class MaintenanceService {
         log.info("📌 Version mới: {}", this.version);
     }
 
-    public void addChange(String change) { changes.add(change); }
-    public List<String> getChanges() { return new ArrayList<>(changes); }
-    public void clearChanges() { changes.clear(); }
+    public void addChange(String change) {
+        changes.add(change);
+    }
+
+    public List<String> getChanges() {
+        return new ArrayList<>(changes);
+    }
+
+    public void clearChanges() {
+        changes.clear();
+    }
 
     public void announceDeploy(JDA jda, String channelId) {
         TextChannel channel = jda.getTextChannelById(channelId);
@@ -82,6 +93,7 @@ public class MaintenanceService {
 
         StringBuilder sb = new StringBuilder();
         sb.append("🚀 **Bot đã deploy xong!**\n");
+        sb.append("✅ **Bot đã hoạt động trở lại!**\n");
         sb.append("📅 Ngày: ").append(LocalDate.now().format(dateFormatter)).append("\n");
         sb.append("📌 Phiên bản: **").append(version).append("**\n");
         sb.append("✨ Thay đổi:\n");
@@ -94,4 +106,5 @@ public class MaintenanceService {
                 err -> log.error("❌ Lỗi gửi thông báo", err)
         );
     }
+
 }

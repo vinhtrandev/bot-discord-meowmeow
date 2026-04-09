@@ -30,7 +30,7 @@ public class ShutdownHandler {
         // Thông báo Discord (.complete() vì process sắp tắt)
         var channel = jda.getTextChannelById(CHANNEL_ID);
         if (channel != null) {
-            channel.sendMessage("🔧 **Bot đang bảo trì, vui lòng chờ...**").complete();
+            channel.sendMessage("🔧 **Bot đang bảo trì, vui lòng chờ ít phút...**").complete();
         }
 
         log.info("✅ Hoàn tất shutdown.");

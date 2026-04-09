@@ -19,26 +19,25 @@ public class UserService {
     private final UserCoinRepository userCoinRepository;
     private final LeaderboardRepository leaderboardRepository;
 
-    public User register(String discordId, String username) {
-        if (userRepository.existsByDiscordId(discordId))
-            throw new RuntimeException("Bạn đã đăng ký rồi!");
-
-        User user = userRepository.save(User.builder()
-                .discordId(discordId).username(username).build());
-
-        userCoinRepository.save(UserCoin.builder()
-                .user(user).balance(1000L).totalEarned(0L).build());
-
-        leaderboardRepository.save(Leaderboard.builder()
-                .user(user).totalWinnings(0L).gamesPlayed(0).gamesWon(0).winRate(0.0).build());
-
-        return user;
+    @Transactional
+    public User getUser(String discordId, String username) {
+        return userRepository.findByDiscordId(discordId)
+                .orElseGet(() -> {
+                    User user = userRepository.save(User.builder()
+                            .discordId(discordId).username(username).build());
+                    userCoinRepository.save(UserCoin.builder()
+                            .user(user).balance(1000L).totalEarned(0L).build());
+                    leaderboardRepository.save(Leaderboard.builder()
+                            .user(user).totalWinnings(0L).gamesPlayed(0)
+                            .gamesWon(0).winRate(0.0).build());
+                    return user;
+                });
     }
 
     @Transactional(readOnly = true)
     public User getUser(String discordId) {
         return userRepository.findByDiscordId(discordId)
-                .orElseThrow(() -> new RuntimeException("Bạn chưa đăng ký! Dùng `/register`"));
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy user!"));
     }
 
     @Transactional(readOnly = true)

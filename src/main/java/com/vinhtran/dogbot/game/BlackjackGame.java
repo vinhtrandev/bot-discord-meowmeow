@@ -10,7 +10,7 @@ public class BlackjackGame {
 
     public record Card(int rank, int suitIndex) {}
 
-    private static final String[] SUIT_SYMBOLS = {"♠", "♥", "♦", "♣"};
+    private static final String[] SUIT_SYMBOLS = {"\u2660", "\u2665", "\u2666", "\u2663"};
 
     private final List<Card> playerHand = new ArrayList<>();
     private final List<Card> dealerHand = new ArrayList<>();
@@ -53,13 +53,14 @@ public class BlackjackGame {
     public int     getPlayerHandSize() { return playerHand.size(); }
     public int     getDealerHandSize() { return dealerHand.size(); }
 
+    /** Trả về bản sao danh sách bài của player */
+    public List<Card> getPlayerHand() { return Collections.unmodifiableList(playerHand); }
+
     // =====================================================================
     // CÁC BỘ ĐẶC BIỆT
     // =====================================================================
     public boolean isXiBang(List<Card> hand) {
-        return hand.size() == 2
-                && hand.get(0).rank() == 1
-                && hand.get(1).rank() == 1;
+        return hand.size() == 2 && hand.get(0).rank() == 1 && hand.get(1).rank() == 1;
     }
 
     public boolean isXiDach(List<Card> hand) {
@@ -93,7 +94,7 @@ public class BlackjackGame {
     }
 
     // =====================================================================
-    // XÁC ĐỊNH KẾT QUẢ
+    // XÁC ĐỊNH KẾT QUẢ (BLACKJACK THƯỜNG vs BOT)
     // =====================================================================
     public GameResult determineResultAfterDealer() {
         dealerPlay();
@@ -132,9 +133,62 @@ public class BlackjackGame {
     }
 
     // =====================================================================
-    // ẢNH — chỉ thêm tham số username, logic không đổi
+    // SO BÀI SOLO 1V1 — Xì Bàn > Xì Dách > Ngũ Linh > Điểm > Bust
+    // Trả về: 1 = gameA thắng, -1 = gameB thắng, 0 = Hòa
     // =====================================================================
+    public static int compareSolo(BlackjackGame gameA, BlackjackGame gameB) {
+        boolean aBang  = gameA.isPlayerXiBang(),  bBang  = gameB.isPlayerXiBang();
+        boolean aDach  = gameA.isPlayerXiDach(),  bDach  = gameB.isPlayerXiDach();
+        boolean aLinh  = gameA.isPlayerNguLinh(), bLinh  = gameB.isPlayerNguLinh();
+        boolean aBust  = gameA.playerBust(),      bBust  = gameB.playerBust();
+        int     aScore = gameA.getPlayerScore(),  bScore = gameB.getPlayerScore();
 
+        // 1. Xì Bàn (2 con Át)
+        if (aBang && bBang) return 0;
+        if (aBang) return 1;
+        if (bBang) return -1;
+
+        // 2. Xì Dách (A + 10/J/Q/K)
+        if (aDach && bDach) return 0;
+        if (aDach) return 1;
+        if (bDach) return -1;
+
+        // 3. Ngũ Linh (5 lá không quắc) — ít điểm hơn thắng theo luật VN
+        if (aLinh && bLinh) {
+            if (aScore < bScore) return 1;
+            if (aScore > bScore) return -1;
+            return 0;
+        }
+        if (aLinh) return 1;
+        if (bLinh) return -1;
+
+        // 4. Cả 2 quắc → hòa
+        if (aBust && bBust) return 0;
+
+        // 5. 1 người quắc
+        if (aBust) return -1;
+        if (bBust) return 1;
+
+        // 6. So điểm thường
+        if (aScore > bScore) return 1;
+        if (aScore < bScore) return -1;
+        return 0;
+    }
+
+    // =====================================================================
+    // MÔ TẢ KẾT QUẢ BÀI — dùng cho dòng resultLine
+    // =====================================================================
+    public String getSoloResultDesc() {
+        if (isPlayerXiBang())  return "Xì Bàn 🃏🃏";
+        if (isPlayerXiDach())  return "Xì Dách 🃏";
+        if (isPlayerNguLinh()) return "Ngũ Linh 🖐️ (" + getPlayerScore() + " điểm)";
+        if (playerBust())      return "Quắc 💥";
+        return getPlayerScore() + " điểm";
+    }
+
+    // =====================================================================
+    // ẢNH — BLACKJACK THƯỜNG
+    // =====================================================================
     public InputStream getTableImagePlaying(String username) throws Exception {
         return CardImageGenerator.drawTable(
                 playerHand, getPlayerScore(),
@@ -154,7 +208,76 @@ public class BlackjackGame {
     }
 
     // =====================================================================
-    // TEXT FALLBACK (giữ để tương thích)
+    // ẢNH — SOLO XÌ DÁCH
+    // =====================================================================
+
+    /**
+     * [PUBLIC] Cả 2 bài đều úp — đăng công khai trong channel khi đang chơi.
+     */
+    public static InputStream getSoloImagePublic(
+            String challengerName, BlackjackGame challengerGame,
+            String targetName,     BlackjackGame targetGame,
+            boolean challengerTurn,
+            String statusLine) throws Exception {
+        return CardImageGenerator.drawSolo(
+                challengerName, challengerGame.getPlayerHand(), challengerGame.getPlayerScore(), true,
+                targetName,     targetGame.getPlayerHand(),     targetGame.getPlayerScore(),     true,
+                challengerTurn,
+                statusLine
+        );
+    }
+
+    /**
+     * [EPHEMERAL - CHALLENGER] Challenger thấy bài MÌNH (hàng dưới), target bị úp.
+     */
+    public static InputStream getSoloImageForChallenger(
+            String challengerName, BlackjackGame challengerGame,
+            String targetName,     BlackjackGame targetGame) throws Exception {
+        String scoreNote = challengerGame.playerBust()
+                ? "\uD83D\uDCA5 Quắc!"
+                : "Bài của bạn: " + challengerGame.getPlayerScore() + " điểm";
+        return CardImageGenerator.drawSolo(
+                targetName,     targetGame.getPlayerHand(),     targetGame.getPlayerScore(),     true,
+                challengerName, challengerGame.getPlayerHand(), challengerGame.getPlayerScore(), false,
+                false,
+                scoreNote
+        );
+    }
+
+    /**
+     * [EPHEMERAL - TARGET] Target thấy bài MÌNH (hàng dưới), challenger bị úp.
+     */
+    public static InputStream getSoloImageForTarget(
+            String challengerName, BlackjackGame challengerGame,
+            String targetName,     BlackjackGame targetGame) throws Exception {
+        String scoreNote = targetGame.playerBust()
+                ? "\uD83D\uDCA5 Quắc!"
+                : "Bài của bạn: " + targetGame.getPlayerScore() + " điểm";
+        return CardImageGenerator.drawSolo(
+                challengerName, challengerGame.getPlayerHand(), challengerGame.getPlayerScore(), true,
+                targetName,     targetGame.getPlayerHand(),     targetGame.getPlayerScore(),     false,
+                false,
+                scoreNote
+        );
+    }
+
+    /**
+     * [PUBLIC - KẾT QUẢ] Lật hết bài cả 2, dùng khi ván đã kết thúc.
+     */
+    public static InputStream getSoloImageFinal(
+            String challengerName, BlackjackGame challengerGame,
+            String targetName,     BlackjackGame targetGame,
+            String resultMsg) throws Exception {
+        return CardImageGenerator.drawSolo(
+                challengerName, challengerGame.getPlayerHand(), challengerGame.getPlayerScore(), false,
+                targetName,     targetGame.getPlayerHand(),     targetGame.getPlayerScore(),     false,
+                false,
+                resultMsg
+        );
+    }
+
+    // =====================================================================
+    // TEXT FALLBACK
     // =====================================================================
     private String cardLabel(Card c) {
         String rank = switch (c.rank()) {
@@ -180,6 +303,6 @@ public class BlackjackGame {
     public String getDealerHandHidden() {
         Card first = dealerHand.get(0);
         int  val   = (first.rank() == 1) ? 11 : Math.min(first.rank(), 10);
-        return cardLabel(first) + "  ❓  `[" + val + ", ?]`";
+        return cardLabel(first) + "  \u2753  `[" + val + ", ?]`";
     }
 }

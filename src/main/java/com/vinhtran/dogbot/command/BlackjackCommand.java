@@ -16,7 +16,6 @@ import net.dv8tion.jda.api.utils.FileUpload;
 import org.springframework.stereotype.Component;
 
 import java.awt.*;
-import java.io.InputStream;
 
 @Slf4j
 @Component
@@ -31,7 +30,7 @@ public class BlackjackCommand implements Command {
 
     @Override
     public String getName() {
-        return "!blackjack";
+        return "!bj";
     }
 
     @Override
@@ -41,16 +40,10 @@ public class BlackjackCommand implements Command {
                 ? event.getMember().getEffectiveName()
                 : event.getAuthor().getName();
 
-        try {
-            userService.getUser(userId);
-        } catch (RuntimeException e) {
-            event.getChannel().sendMessage(
-                    "❌ Bạn chưa đăng ký! Dùng `!register` trước nhé.").queue();
-            return;
-        }
+        userService.getUser(userId, username);
 
         if (args.length < 2) {
-            event.getChannel().sendMessage("Dùng: `!blackjack <số coin hoặc all>`").queue();
+            event.getChannel().sendMessage("Dùng: `!bj <số coin hoặc all>`").queue();
             return;
         }
 
@@ -92,11 +85,9 @@ public class BlackjackCommand implements Command {
                     event.getChannel().sendMessage(
                             "💖 " + coupleEmoji + " **" + username + "** và **" + partnerName
                                     + "** đang trải nghiệm Xì Dách cùng nhau! 💕").queue();
-                } catch (Exception ignored) {
-                }
+                } catch (Exception ignored) {}
             });
 
-            // Kiểm tra các bộ bài đặc biệt ngay khi chia
             if (game.isPlayerXiBang() && game.isDealerXiBang()) {
                 gameService.recordResult(userId, "BLACKJACK", bet, "DRAW");
                 bjService.clear(userId);
@@ -151,7 +142,6 @@ public class BlackjackCommand implements Command {
                 return;
             }
 
-            // Nếu không có bộ đặc biệt thì bắt đầu lượt rút bài
             sendPlaying(event, game, skinEmoji, userId, username, bet, false);
 
         } catch (NumberFormatException e) {
@@ -162,15 +152,16 @@ public class BlackjackCommand implements Command {
         }
     }
 
-    // username thêm vào để truyền cho ảnh, không ảnh hưởng logic
     public void sendPlaying(MessageReceivedEvent event, BlackjackGame game,
                             String skinEmoji, String userId, String username,
                             long bet, boolean doubled) {
         try {
-            InputStream img = game.getTableImagePlaying(username);
+            // ✅ Dùng readAllBytes() thay vì try-with-resources
+            byte[] imgBytes = game.getTableImagePlaying(username).readAllBytes();
+
             event.getChannel()
                     .sendMessageEmbeds(buildPlayingEmbed(game, skinEmoji, bet, doubled))
-                    .addFiles(FileUpload.fromData(img, "table.png"))
+                    .addFiles(FileUpload.fromData(imgBytes, "table.png"))
                     .setActionRow(
                             Button.success("bj_hit:" + userId + ":" + bet, "🃏 Rút bài"),
                             Button.danger("bj_stand:" + userId + ":" + bet, "✋ Dừng"),
@@ -185,10 +176,12 @@ public class BlackjackCommand implements Command {
     public void sendFinal(MessageReceivedEvent event, BlackjackGame game,
                           String skinEmoji, String username, String msg, Color color) {
         try {
-            InputStream img = game.getTableImageFinal(username);
+            // ✅ Dùng readAllBytes() thay vì try-with-resources
+            byte[] imgBytes = game.getTableImageFinal(username).readAllBytes();
+
             event.getChannel()
                     .sendMessageEmbeds(buildFinalEmbed(skinEmoji, msg, color))
-                    .addFiles(FileUpload.fromData(img, "table.png"))
+                    .addFiles(FileUpload.fromData(imgBytes, "table.png"))
                     .queue();
         } catch (Exception e) {
             log.error("Lỗi sendFinal", e);

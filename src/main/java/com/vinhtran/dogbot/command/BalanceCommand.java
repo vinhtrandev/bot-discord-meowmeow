@@ -27,17 +27,18 @@ public class BalanceCommand implements Command {
 
     @Override
     public void execute(MessageReceivedEvent event, String[] args) {
-        String discordId = event.getAuthor().getId();
+        String discordId  = event.getAuthor().getId();
         String authorName = event.getAuthor().getName();
-        String avatarUrl = event.getAuthor().getEffectiveAvatarUrl();
+        String avatarUrl  = event.getAuthor().getEffectiveAvatarUrl();
 
         try {
-            // 1. Lấy số dư ví (Wallet)
+            // Tự động tạo tài khoản nếu chưa có
+            userService.getUser(discordId, authorName);
+
             long wallet = userService.getBalance(discordId);
 
-            // 2. Lấy thông tin ngân hàng (Bank)
             long bank = 0;
-            String bankInfo = "❌ *Chưa mở tài khoản*";
+            String bankInfo    = "❌ *Chưa mở tài khoản*";
             String tierDisplay = "N/A";
 
             try {
@@ -47,29 +48,19 @@ public class BalanceCommand implements Command {
                     tierDisplay = BankService.TIER_NAME[ba.getTier()];
                     bankInfo = String.format("`%s` | **%,d 🪙**", tierDisplay, bank);
                 }
-            } catch (Exception ignored) {
-                // Nếu chưa có bank thì vẫn giữ giá trị mặc định
-            }
+            } catch (Exception ignored) {}
 
-            // 3. Tính tổng tài sản
             long total = wallet + bank;
 
-            // 4. Xây dựng giao diện Embed đẹp hơn
             EmbedBuilder embed = new EmbedBuilder()
                     .setAuthor("Tài chính của " + authorName, null, avatarUrl)
                     .setTitle("🏦 THÔNG TIN TÀI KHOẢN")
-                    .setColor(new Color(52, 152, 219)) // Màu xanh dương chuyên nghiệp
-
-                    // Sử dụng định dạng %,d để hiển thị dấu phân cách hàng nghìn
+                    .setColor(new Color(52, 152, 219))
                     .addField("👛 Ví tiền", String.format("**%,d** 🪙", wallet), true)
                     .addField("💳 Ngân hàng", bankInfo, true)
-
-                    // Dòng ngăn cách hoặc khoảng trống
                     .addBlankField(false)
-
                     .addField("💰 Tổng tài sản", String.format("**%,d** 🪙", total), false)
-
-                    .setThumbnail("https://cdn-icons-png.flaticon.com/512/2489/2489756.png") // Icon ví/tiền
+                    .setThumbnail("https://cdn-icons-png.flaticon.com/512/2489/2489756.png")
                     .setFooter("Yêu cầu bởi " + authorName, avatarUrl)
                     .setTimestamp(Instant.now());
 
@@ -77,7 +68,8 @@ public class BalanceCommand implements Command {
 
         } catch (Exception e) {
             log.error("Lỗi khi kiểm tra số dư của {}: ", discordId, e);
-            event.getChannel().sendMessage("❌ **Lỗi:** Không thể tải thông tin tài chính của bạn!").queue();
+            event.getChannel().sendMessage(
+                    "❌ **Lỗi:** Không thể tải thông tin tài chính của bạn!").queue();
         }
     }
 }

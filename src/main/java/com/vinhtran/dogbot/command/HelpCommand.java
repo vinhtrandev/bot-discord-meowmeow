@@ -17,12 +17,11 @@ public class HelpCommand implements Command {
         event.getChannel().sendMessageEmbeds(new EmbedBuilder()
                 .setTitle("📖 Danh Sách Lệnh")
                 .setColor(Color.BLUE)
-                // Tài khoản
-                .addField("!register",              "Đăng ký, nhận 1000 coin",                    false)
-                .addField("!balance",               "Xem số dư ví + ngân hàng",                   false)
                 // Game
-                .addField("!blackjack <coin/all>",  "Chơi Xì Dách | 5p không chơi tự hủy",       false)
-                .addField("!baicao <coin/all>",     "Chơi Bài Cào",                               false)
+                .addField("!bj <coin/all>",  "Chơi Xì Dách | 5p không chơi tự hủy",       false)
+                .addField("!bc <coin/all>",     "Chơi Bài Cào",                               false)
+                // Tài khoản
+                .addField("!balance",               "Xem số dư ví + ngân hàng",                   false)
                 // Kinh tế
                 .addField("!steal @user",           "Trộm coin ví người khác (10p cooldown)",     false)
                 .addField("!bank",                  "Menu ngân hàng (mở/gửi/rút/xem)",            false)

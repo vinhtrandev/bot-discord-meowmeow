@@ -14,7 +14,6 @@ import net.dv8tion.jda.api.utils.FileUpload;
 import org.springframework.stereotype.Component;
 
 import java.awt.*;
-import java.io.InputStream;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -28,7 +27,6 @@ public class BaicaoCommand implements Command {
     private final ShopService shopService;
     private final CoupleService coupleService;
 
-    // Lưu session tạm: userId -> [game, playerHand, botHand, bet, username]
     private final Map<String, BaicaoSession> sessions = new ConcurrentHashMap<>();
 
     record BaicaoSession(BaicaoGame game, BaicaoGame.Hand playerHand,
@@ -46,13 +44,7 @@ public class BaicaoCommand implements Command {
                 ? event.getMember().getEffectiveName()
                 : event.getAuthor().getName();
 
-        try {
-            userService.getUser(userId);
-        } catch (RuntimeException e) {
-            event.getChannel().sendMessage(
-                    "❌ Bạn chưa đăng ký! Dùng `!register` trước nhé.").queue();
-            return;
-        }
+        userService.getUser(userId, username);
 
         if (args.length < 2) {
             event.getChannel().sendMessage("Dùng: `!baicao <số coin hoặc all>`").queue();
@@ -85,17 +77,14 @@ public class BaicaoCommand implements Command {
                 return;
             }
 
-            // Khởi tạo game & chia bài
             BaicaoGame game       = new BaicaoGame();
             BaicaoGame.Hand pHand = game.dealHand();
             BaicaoGame.Hand bHand = game.dealHand();
 
-            // Lưu session
             sessions.put(userId, new BaicaoSession(game, pHand, bHand, bet, username));
 
             String skinEmoji = getSkinEmoji(userId);
 
-            // Thông báo cặp đôi
             coupleService.getPartnerId(userId).ifPresent(partnerId -> {
                 try {
                     String partnerName = userService.getUser(partnerId).getUsername();
@@ -106,23 +95,23 @@ public class BaicaoCommand implements Command {
                 } catch (Exception ignored) {}
             });
 
-            // Gửi ảnh 2 lá ngửa + lá 3 úp, kèm nút MỞ / GẤP ĐÔI
-            try (InputStream img = game.getTableImageHidden(pHand, bHand, username)) {
-                event.getChannel().sendMessageEmbeds(
-                                new EmbedBuilder()
-                                        .setTitle(skinEmoji + " Bài Cào")
-                                        .setDescription("💰 Cược: **" + bet + " coin**\n"
-                                                + "🂠 Lá thứ 3 đang úp — Chọn hành động của bạn!")
-                                        .setImage("attachment://baicao.png")
-                                        .setFooter("Sáp(x5) > Liêng(x3) > Ba Tây(x2) > Điểm thường(x1)")
-                                        .setColor(Color.BLUE)
-                                        .build()
-                        ).addFiles(FileUpload.fromData(img, "baicao.png"))
-                        .setActionRow(
-                                Button.success("bc_open:"   + userId + ":" + bet, "👁 Mở"),
-                                Button.primary("bc_double:" + userId + ":" + bet, "🔥 Gấp Đôi (x2)")
-                        ).queue();
-            }
+            // ✅ Dùng readAllBytes() thay vì try-with-resources
+            byte[] imgBytes = game.getTableImageHidden(pHand, bHand, username).readAllBytes();
+
+            event.getChannel().sendMessageEmbeds(
+                            new EmbedBuilder()
+                                    .setTitle(skinEmoji + " Bài Cào")
+                                    .setDescription("💰 Cược: **" + bet + " coin**\n"
+                                            + "🂠 Lá thứ 3 đang úp — Chọn hành động của bạn!")
+                                    .setImage("attachment://baicao.png")
+                                    .setFooter("Sáp(x5) > Liêng(x3) > Ba Tây(x2) > Điểm thường(x1)")
+                                    .setColor(Color.BLUE)
+                                    .build()
+                    ).addFiles(FileUpload.fromData(imgBytes, "baicao.png"))
+                    .setActionRow(
+                            Button.success("bc_open:"   + userId + ":" + bet, "👁 Mở"),
+                            Button.primary("bc_double:" + userId + ":" + bet, "🔥 Gấp Đôi (x2)")
+                    ).queue();
 
         } catch (NumberFormatException e) {
             event.getChannel().sendMessage("Số coin không hợp lệ!").queue();
@@ -132,9 +121,6 @@ public class BaicaoCommand implements Command {
         }
     }
 
-    // =====================================================================
-    // XỬ LÝ KẾT QUẢ — gọi từ ButtonListener
-    // =====================================================================
     public void handleOpen(net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent event,
                            String userId, long bet) {
         BaicaoSession session = sessions.remove(userId);
@@ -142,7 +128,6 @@ public class BaicaoCommand implements Command {
             event.reply("Không tìm thấy ván game!").setEphemeral(true).queue();
             return;
         }
-
         event.deferEdit().queue();
         resolveGame(event, session, bet, false);
     }
@@ -168,11 +153,10 @@ public class BaicaoCommand implements Command {
 
     private void resolveGame(net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent event,
                              BaicaoSession session, long finalBet, boolean doubled) {
-        BaicaoGame      game   = session.game();
-        BaicaoGame.Hand pHand  = session.playerHand();
-        BaicaoGame.Hand bHand  = session.botHand();
-        String          userId = session.game().toString(); // không dùng — lấy từ button
-        String          uname  = session.username();
+        BaicaoGame      game  = session.game();
+        BaicaoGame.Hand pHand = session.playerHand();
+        BaicaoGame.Hand bHand = session.botHand();
+        String          uname = session.username();
         String          skinEmoji = getSkinEmoji(event.getUser().getId());
 
         String result = game.determineResult(pHand, bHand);
@@ -200,7 +184,10 @@ public class BaicaoCommand implements Command {
             }
         }
 
-        try (InputStream img = game.getTableImageFinal(pHand, bHand, uname)) {
+        try {
+            // ✅ Dùng readAllBytes() thay vì try-with-resources
+            byte[] imgBytes = game.getTableImageFinal(pHand, bHand, uname).readAllBytes();
+
             event.getHook()
                     .editOriginalEmbeds(new EmbedBuilder()
                             .setTitle(skinEmoji + " Bài Cào — Kết quả")
@@ -209,11 +196,19 @@ public class BaicaoCommand implements Command {
                             .setFooter("Sáp(x5) > Liêng(x3) > Ba Tây(x2) > Điểm thường(x1)")
                             .setColor(color)
                             .build())
-                    .setFiles(FileUpload.fromData(img, "baicao.png"))
+                    .setFiles(FileUpload.fromData(imgBytes, "baicao.png"))
                     .setComponents()
                     .queue();
         } catch (Exception e) {
             log.error("Lỗi render kết quả BaicaoCommand", e);
+            event.getHook()
+                    .editOriginalEmbeds(new EmbedBuilder()
+                            .setTitle(skinEmoji + " Bài Cào — Kết quả")
+                            .setDescription(msg)
+                            .setColor(color)
+                            .build())
+                    .setComponents()
+                    .queue();
         }
     }
 
