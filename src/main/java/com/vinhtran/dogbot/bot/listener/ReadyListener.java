@@ -19,6 +19,6 @@ public class ReadyListener extends ListenerAdapter {
     @Override
     public void onReady(ReadyEvent event) {
         log.info("✅ Bot đã sẵn sàng: {}", event.getJDA().getSelfUser().getName());
-        botDeployer.onBotReady(event.getJDA());
+        //botDeployer.onBotReady(event.getJDA());
     }
 }
