@@ -32,8 +32,13 @@ public class MaintenanceService {
 
     @PostConstruct
     public void init() {
+        // Ép buộc xóa key bảo trì mỗi khi Bot khởi động lại
+        disableMaintenance();
+
         if (isMaintenance()) {
-            log.info("⚠️  Bot đang ở chế độ bảo trì (đọc từ Redis).");
+            log.info("⚠️ Bot đang ở chế độ bảo trì.");
+        } else {
+            log.info("✅ Bot đã sẵn sàng và không ở chế độ bảo trì.");
         }
     }
 
