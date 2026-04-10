@@ -8,7 +8,6 @@ import org.springframework.stereotype.Service;
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.JedisPool;
 
-import java.net.URI;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -33,8 +32,9 @@ public class MaintenanceService {
     @PostConstruct
     public void init() {
         if (isMaintenance()) {
-        log.info("✅ Đã ép buộc tắt bảo trì khi khởi động.");
             log.info("⚠️  Bot đang ở chế độ bảo trì (đọc từ Redis).");
+        } else {
+            log.info("✅ Bot khởi động bình thường, không có bảo trì.");
         }
     }
 
@@ -107,5 +107,4 @@ public class MaintenanceService {
                 err -> log.error("❌ Lỗi gửi thông báo", err)
         );
     }
-
 }
