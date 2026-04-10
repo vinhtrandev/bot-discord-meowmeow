@@ -4,73 +4,63 @@ import com.vinhtran.dogbot.command.AdminConfigCommand;
 import com.vinhtran.dogbot.command.Command;
 import com.vinhtran.dogbot.command.CommandHandler;
 import com.vinhtran.dogbot.service.MaintenanceService;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import net.dv8tion.jda.api.events.message.MessageReceivedEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
-
-import java.util.concurrent.Executor;
 
 @Slf4j
 @Component
+@RequiredArgsConstructor
 public class MessageListener extends ListenerAdapter {
 
     private final CommandHandler     commandHandler;
-    private final Executor           executor;
+    private final AdminConfigCommand adminConfigCommand;
     private final MaintenanceService maintenanceService;
-    private final AdminConfigCommand adminConfig;
-
-    public MessageListener(CommandHandler commandHandler,
-                           @Qualifier("commandExecutor") Executor executor,
-                           MaintenanceService maintenanceService,
-                           AdminConfigCommand adminConfig) {
-        this.commandHandler     = commandHandler;
-        this.executor           = executor;
-        this.maintenanceService = maintenanceService;
-        this.adminConfig        = adminConfig;
-    }
 
     @Override
     public void onMessageReceived(MessageReceivedEvent event) {
         if (event.getAuthor().isBot()) return;
-        if (event.getGuild() == null)  return;
+        if (!event.isFromGuild())       return;
 
         String serverId = event.getGuild().getId();
-        AdminConfigCommand.ServerConfig cfg = adminConfig.getConfig(serverId);
+        AdminConfigCommand.ServerConfig cfg = adminConfigCommand.getConfig(serverId);
 
-        // ── Lọc kênh ──────────────────────────────────────────────────────
+        // ── Channel filter ────────────────────────────────────────────────
         String botChannelId = cfg.botChannelId();
-        if (botChannelId != null && !event.getChannel().getId().equals(botChannelId)) return;
-
-        // ── Lấy prefix động ───────────────────────────────────────────────
-        String prefix = cfg.prefix();
-        String raw    = event.getMessage().getContentRaw().trim();
-        if (!raw.startsWith(prefix)) return;
-
-        // ── Chặn khi bảo trì ──────────────────────────────────────────────
-        String maintenanceCmd = prefix + "maintenance";
-        if (maintenanceService.isMaintenance() && !raw.startsWith(maintenanceCmd)) {
-            event.getChannel().sendMessage("⚠️ **Bot đang bảo trì!** Vui lòng thử lại sau.").queue();
+        if (botChannelId != null && !event.getChannel().getId().equals(botChannelId)) {
             return;
         }
 
-        String[] parts   = raw.split("\\s+");
-        String   cmdName = parts[0].toLowerCase();
+        // ── Maintenance check ─────────────────────────────────────────────
+        if (maintenanceService.isMaintenance()) {
+            return;
+        }
 
-        // ── Lookup: truyền serverId để hỗ trợ dynamic alias ───────────────
-        Command cmd = commandHandler.getCommand(cmdName, serverId);
+        // ── Prefix check ──────────────────────────────────────────────────
+        String prefix  = cfg.prefix();
+        String content = event.getMessage().getContentRaw().trim();
+        if (!content.startsWith(prefix)) return;
+
+        String withoutPrefix = content.substring(prefix.length()).trim();
+        if (withoutPrefix.isBlank()) return;
+
+        String[] parts   = withoutPrefix.split("\\s+");
+        String   rawName = parts[0].toLowerCase();
+
+        // ── Lookup command ────────────────────────────────────────────────
+        Command cmd = commandHandler.getCommand(rawName, serverId);
         if (cmd == null) return;
 
+        // ── Hiệu ứng "Bot đang nhập..." ───────────────────────────────────
         event.getChannel().sendTyping().queue();
 
-        executor.execute(() -> {
-            try {
-                cmd.execute(event, parts);
-            } catch (Exception e) {
-                log.error("Lỗi khi thực thi command {}", cmdName, e);
-                event.getChannel().sendMessage("❌ Có lỗi xảy ra khi xử lý lệnh.").queue();
-            }
-        });
+        try {
+            cmd.execute(event, parts);
+        } catch (Exception e) {
+            log.error("Lỗi execute command '{}' server={}", rawName, serverId, e);
+            event.getChannel().sendMessage("❌ Có lỗi xảy ra khi thực hiện lệnh!").queue();
+        }
     }
 }

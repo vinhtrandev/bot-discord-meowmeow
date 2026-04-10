@@ -31,6 +31,9 @@ import java.util.concurrent.ConcurrentHashMap;
  * Config được lưu vào PostgreSQL (Supabase) — tồn tại vĩnh viễn dù redeploy.
  * In-memory cache để tránh query DB mỗi lần nhận tin nhắn.
  *
+ * FIX: Mọi thao tác thêm/xóa alias đều sync sang CommandHandler (in-memory)
+ *      để MessageListener dùng getCommand(name, serverId) hoạt động đúng.
+ *
  * Lấy config từ class khác:
  *   AdminConfigCommand.ServerConfig cfg = adminConfigCommand.getConfig(serverId);
  *   String prefix = cfg.prefix();
@@ -80,16 +83,20 @@ public class AdminConfigCommand extends ListenerAdapter {
     }
 
     // ── In-memory cache ───────────────────────────────────────────────────
-    // Tránh query DB mỗi lần nhận message — chỉ load 1 lần rồi cache lại
     private final Map<String, ServerConfig> cache = new ConcurrentHashMap<>();
 
     // ── Public API ────────────────────────────────────────────────────────
 
     /**
      * Lấy config server. Ưu tiên cache, nếu miss thì load từ DB.
+     * Khi load từ DB, sync toàn bộ alias vào CommandHandler luôn.
      */
     public ServerConfig getConfig(String serverId) {
-        return cache.computeIfAbsent(serverId, this::loadFromDb);
+        return cache.computeIfAbsent(serverId, id -> {
+            ServerConfig cfg = loadFromDb(id);
+            syncAliasesToCommandHandler(id, cfg.aliases());
+            return cfg;
+        });
     }
 
     /**
@@ -101,7 +108,7 @@ public class AdminConfigCommand extends ListenerAdapter {
     }
 
     /**
-     * Lấy dynamic aliases của server.
+     * Lấy dynamic aliases của server (từ cache/DB).
      */
     public Map<String, String> getDynamicAliases(String serverId) {
         Map<String, String> aliases = getConfig(serverId).aliases();
@@ -109,30 +116,46 @@ public class AdminConfigCommand extends ListenerAdapter {
     }
 
     /**
-     * Thêm alias và lưu vào DB.
+     * Thêm alias: lưu DB + sync CommandHandler.
      */
     public void addDynamicAlias(String serverId, String alias, String command) {
-        ServerConfig cfg = getConfig(serverId);
+        ServerConfig cfg     = getConfig(serverId);
         Map<String, String> updated = new HashMap<>(cfg.aliases() != null ? cfg.aliases() : Map.of());
         updated.put(alias, command);
         saveConfig(serverId, cfg.withAliases(updated));
+
+        // Sync sang CommandHandler để MessageListener dùng được ngay
+        try {
+            commandHandler.addAlias(serverId, alias, command);
+        } catch (Exception e) {
+            // CommandHandler.addAlias() đã validate — nếu lỗi ở đây thì chỉ log
+            log.warn("Sync alias to CommandHandler failed: {}", e.getMessage());
+        }
     }
 
     /**
-     * Xóa alias và lưu vào DB.
+     * Xóa alias: lưu DB + sync CommandHandler.
      */
     public void removeDynamicAlias(String serverId, String alias) {
-        ServerConfig cfg = getConfig(serverId);
+        ServerConfig cfg     = getConfig(serverId);
         Map<String, String> updated = new HashMap<>(cfg.aliases() != null ? cfg.aliases() : Map.of());
         updated.remove(alias);
         saveConfig(serverId, cfg.withAliases(updated));
+
+        // Sync sang CommandHandler
+        try {
+            commandHandler.removeAlias(serverId, alias);
+        } catch (Exception e) {
+            log.warn("Sync remove alias to CommandHandler failed: {}", e.getMessage());
+        }
     }
 
     /**
-     * Xóa toàn bộ alias và lưu vào DB.
+     * Xóa toàn bộ alias: lưu DB + sync CommandHandler.
      */
     public void clearDynamicAliases(String serverId) {
         saveConfig(serverId, getConfig(serverId).withAliases(new HashMap<>()));
+        commandHandler.clearDynamicAliases(serverId);
     }
 
     // ── DB I/O ────────────────────────────────────────────────────────────
@@ -153,7 +176,6 @@ public class AdminConfigCommand extends ListenerAdapter {
 
     private void persistToDb(String serverId, ServerConfig cfg) {
         try {
-            // findById rồi update để giữ createdAt, hoặc tạo mới nếu chưa có
             ServerConfigEntity entity = repo.findById(serverId)
                     .orElseGet(() -> ServerConfigEntity.builder()
                             .serverId(serverId)
@@ -169,6 +191,25 @@ public class AdminConfigCommand extends ListenerAdapter {
         } catch (Exception e) {
             log.error("Lỗi lưu config server {} vào DB: {}", serverId, e.getMessage());
         }
+    }
+
+    /**
+     * Khi load config từ DB, sync toàn bộ alias sang CommandHandler.
+     * Gọi 1 lần duy nhất mỗi khi cache miss (bot restart hoặc server mới).
+     */
+    private void syncAliasesToCommandHandler(String serverId, Map<String, String> aliases) {
+        if (aliases == null || aliases.isEmpty()) return;
+        // Clear trước để tránh duplicate khi reload
+        commandHandler.clearDynamicAliases(serverId);
+        aliases.forEach((alias, command) -> {
+            try {
+                commandHandler.addAlias(serverId, alias, command);
+            } catch (Exception e) {
+                log.warn("Bỏ qua alias lỗi khi sync: server={} alias={} → {}: {}",
+                        serverId, alias, command, e.getMessage());
+            }
+        });
+        log.debug("Đã sync {} alias(es) vào CommandHandler cho server {}", aliases.size(), serverId);
     }
 
     // ── Build slash command data ──────────────────────────────────────────
@@ -259,9 +300,10 @@ public class AdminConfigCommand extends ListenerAdapter {
             return;
         }
 
-        // Xóa row trong DB + xóa cache → lần sau getConfig() sẽ trả về defaultConfig()
+        // Xóa DB + cache + CommandHandler aliases
         repo.deleteById(serverId);
         cache.remove(serverId);
+        commandHandler.clearDynamicAliases(serverId); // FIX: sync CommandHandler luôn
 
         event.replyEmbeds(new EmbedBuilder()
                 .setTitle("🔄 Đã reset về mặc định")
@@ -378,22 +420,21 @@ public class AdminConfigCommand extends ListenerAdapter {
         String alias   = event.getOption("alias").getAsString().toLowerCase().trim();
         String command = event.getOption("command").getAsString().toLowerCase().trim();
 
-        if (commandHandler.getCommand(command) == null && commandHandler.getSlashCommand(command) == null) {
-            event.getHook().sendMessage(
-                    "❌ Lệnh `" + command + "` không tồn tại!\n"
-                            + "Dùng `/help` để xem danh sách lệnh hợp lệ."
-            ).queue();
+        // Validate qua CommandHandler (đã có đủ kiểm tra)
+        try {
+            commandHandler.addAlias(serverId, alias, command);
+        } catch (IllegalArgumentException e) {
+            event.getHook().sendMessage("❌ " + e.getMessage()).queue();
             return;
         }
 
-        if (commandHandler.getCommand(alias) != null) {
-            event.getHook().sendMessage(
-                    "❌ `" + alias + "` đã là tên một lệnh gốc, không thể dùng làm alias!"
-            ).queue();
-            return;
-        }
-
-        addDynamicAlias(serverId, alias, command);
+        // Lưu vào DB/cache
+        ServerConfig cfg     = getConfig(serverId);
+        Map<String, String> updated = new HashMap<>(cfg.aliases() != null ? cfg.aliases() : Map.of());
+        updated.put(CommandHandler.stripPrefix(alias), CommandHandler.stripPrefix(command));
+        // Lưu thẳng vào cache+DB mà không gọi addDynamicAlias() để tránh addAlias() bị gọi 2 lần
+        cache.put(serverId, cfg.withAliases(updated));
+        persistToDb(serverId, cfg.withAliases(updated));
 
         event.getHook().sendMessageEmbeds(new EmbedBuilder()
                 .setTitle("✅ Đã thêm alias")
@@ -419,7 +460,19 @@ public class AdminConfigCommand extends ListenerAdapter {
             return;
         }
 
-        removeDynamicAlias(serverId, alias);
+        // Xóa khỏi CommandHandler
+        try {
+            commandHandler.removeAlias(serverId, alias);
+        } catch (Exception e) {
+            log.warn("removeAlias từ CommandHandler lỗi: {}", e.getMessage());
+        }
+
+        // Xóa khỏi DB/cache
+        ServerConfig cfg     = getConfig(serverId);
+        Map<String, String> updated = new HashMap<>(cfg.aliases() != null ? cfg.aliases() : Map.of());
+        updated.remove(CommandHandler.stripPrefix(alias));
+        cache.put(serverId, cfg.withAliases(updated));
+        persistToDb(serverId, cfg.withAliases(updated));
 
         event.getHook().sendMessageEmbeds(new EmbedBuilder()
                 .setTitle("✅ Đã xóa alias")
@@ -442,7 +495,8 @@ public class AdminConfigCommand extends ListenerAdapter {
             Command cmd = commandHandler.getCommand(name);
             if (cmd != null && !cmd.getAliases().isEmpty()) {
                 cmd.getAliases().stream()
-                        .filter(a -> !CommandHandler.stripPrefix(a).equals(name))
+                        .map(CommandHandler::stripPrefix)
+                        .filter(a -> !a.equals(name))
                         .forEach(a -> defaultSb
                                 .append("`").append(a).append("` → `").append(name).append("`\n"));
             }

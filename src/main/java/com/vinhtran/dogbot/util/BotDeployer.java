@@ -11,7 +11,7 @@ import java.util.List;
 @Component
 public class BotDeployer {
 
-    @Value("${bot.announce-channel-id}")
+    @Value("${bot.announce-channel-id:}")
     private String announceChannelId;
 
     private final DeployManager deployManager;
@@ -21,11 +21,18 @@ public class BotDeployer {
     }
 
     public void onBotReady(JDA jda) {
+        // Chỉ announce nếu channel được cấu hình
+        if (announceChannelId == null || announceChannelId.isBlank()) {
+            log.info("bot.announce-channel-id chưa được cấu hình, bỏ qua announce.");
+            return;
+        }
+
         List<String> changes = List.of(
-                "Cập nhật Blackjack, bài cào logic game chuẩn bài truyền thống Việt Nam",
-                "Cập nhật giao diện người dùng độc quyền Meow Meow",
-                "Fix lỗi hiển thị sai tên người dùng",
-                "Test tính năng bảo trì tự động"
+                "🎰 SÒNG BÀI TRUYỀN THỐNG VIỆT NAM!",
+                "GAME HIỆN TẠI CHỈ CÓ 2 TỰA GAME DUY NHẤT LÀ BLACKJACK (XÌ DÁCH) VÀ BÀI CÀO",
+                "🃏 Blackjack (Xì Dách), Logic chuẩn bài tính điểm thông minh.",
+                "🃏 Bài Cào (Ba Cây) đếm nút so trình nhân phẩm.",
+                "🚀 Sắp tới sẽ cập nhật thêm nhiều game khác hấp dẫn hơn!"
         );
 
         deployManager.onDeployComplete(jda, announceChannelId, changes);

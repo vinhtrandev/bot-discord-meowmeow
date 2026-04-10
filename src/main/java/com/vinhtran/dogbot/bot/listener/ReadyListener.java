@@ -17,7 +17,7 @@ import java.util.List;
 @Component
 public class ReadyListener extends ListenerAdapter {
 
-    @Value("${bot.status-channel-id}")
+    @Value("${bot.status-channel-id:}")
     private String channelId;
 
     private final BotDeployer    botDeployer;
@@ -32,37 +32,35 @@ public class ReadyListener extends ListenerAdapter {
     public void onReady(ReadyEvent event) {
         log.info("✅ Bot đã sẵn sàng: {}", event.getJDA().getSelfUser().getName());
 
-        // ── Gom tất cả slash command data ─────────────────────────────────
         List<SlashCommandData> allSlash = new ArrayList<>();
-
-        // 1. /admin (AdminConfigCommand tự build)
         allSlash.add(AdminConfigCommand.buildCommandData());
-
-        // 2. Tất cả command implement SlashCommand (bj, baicao, balance, ...)
         allSlash.addAll(commandHandler.getAllSlashCommandData());
 
-        // ── Xóa toàn bộ commands cũ trước, sau đó đăng ký lại ────────────
         event.getJDA().updateCommands().queue(
                 cleared -> {
-                    log.info("🗑️ Đã xóa slash commands cũ, đang đăng ký lại {} command(s)...", allSlash.size());
+                    log.info("🗑️ Đã xóa slash commands cũ, đăng ký lại {} command(s)...", allSlash.size());
                     event.getJDA().updateCommands()
                             .addCommands(allSlash)
                             .queue(
-                                    ok  -> log.info("✅ Đã đăng ký {} slash command(s)", allSlash.size()),
+                                    ok  -> log.info("✅ Đã đăng ký {} slash command(s): {}",
+                                            ok.size(),
+                                            ok.stream().map(c -> "/" + c.getName()).toList()),
                                     err -> log.error("❌ Lỗi đăng ký slash command: {}", err.getMessage())
                             );
                 },
                 err -> log.error("❌ Lỗi xóa slash commands cũ: {}", err.getMessage())
         );
 
-        // ── Gửi thông báo bot online ───────────────────────────────────────
-        try {
-            var channel = event.getJDA().getTextChannelById(channelId);
-            if (channel != null) {
-                channel.sendMessage("✅ **Bot đã hoạt động trở lại!**").queue();
+        // Chỉ gửi nếu channelId được cấu hình
+        if (channelId != null && !channelId.isBlank()) {
+            try {
+                var channel = event.getJDA().getTextChannelById(channelId);
+                if (channel != null) {
+                    channel.sendMessage("✅ **Bot đã hoạt động trở lại!**").queue();
+                }
+            } catch (Exception e) {
+                log.warn("Không thể gửi thông báo ready: {}", e.getMessage());
             }
-        } catch (Exception e) {
-            log.warn("Không thể gửi thông báo ready: {}", e.getMessage());
         }
 
         botDeployer.onBotReady(event.getJDA());

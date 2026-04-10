@@ -13,15 +13,17 @@ import org.springframework.stereotype.Component;
 /**
  * Nhận slash command interaction và route về đúng SlashCommand handler.
  * Admin command (/admin) được xử lý trực tiếp tại đây qua AdminConfigCommand.
+ *
+ * FIX: File này bị paste trùng 2 lần trong project — chỉ giữ đúng 1 bản này.
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class SlashCommandListener extends ListenerAdapter {
 
-    private final CommandHandler     commandHandler;
-    private final MaintenanceService maintenanceService;
-    private final AdminConfigCommand adminConfigCommand;
+    private final CommandHandler       commandHandler;
+    private final MaintenanceService   maintenanceService;
+    private final AdminConfigCommand   adminConfigCommand;
 
     @Override
     public void onSlashCommandInteraction(SlashCommandInteractionEvent event) {
@@ -33,11 +35,7 @@ public class SlashCommandListener extends ListenerAdapter {
                 adminConfigCommand.handleAdmin(event);
             } catch (Exception e) {
                 log.error("Lỗi slash command /admin", e);
-                if (event.isAcknowledged()) {
-                    event.getHook().sendMessage("❌ Có lỗi xảy ra: " + e.getMessage()).setEphemeral(true).queue();
-                } else {
-                    event.reply("❌ Có lỗi xảy ra: " + e.getMessage()).setEphemeral(true).queue();
-                }
+                replyError(event, e.getMessage());
             }
             return;
         }
@@ -59,11 +57,17 @@ public class SlashCommandListener extends ListenerAdapter {
             cmd.executeSlash(event);
         } catch (Exception e) {
             log.error("Lỗi slash command /{}", name, e);
-            if (event.isAcknowledged()) {
-                event.getHook().sendMessage("❌ Có lỗi xảy ra!").setEphemeral(true).queue();
-            } else {
-                event.reply("❌ Có lỗi xảy ra!").setEphemeral(true).queue();
-            }
+            replyError(event, "Có lỗi xảy ra!");
+        }
+    }
+
+    // Helper tránh lặp code kiểm tra acknowledged
+    private void replyError(SlashCommandInteractionEvent event, String message) {
+        String text = "❌ " + message;
+        if (event.isAcknowledged()) {
+            event.getHook().sendMessage(text).setEphemeral(true).queue();
+        } else {
+            event.reply(text).setEphemeral(true).queue();
         }
     }
 }
