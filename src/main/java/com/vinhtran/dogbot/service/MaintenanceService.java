@@ -32,11 +32,10 @@ public class MaintenanceService {
 
     @PostConstruct
     public void init() {
-        disableMaintenance();
-        //if (isMaintenance()) {
+        if (isMaintenance()) {
         log.info("✅ Đã ép buộc tắt bảo trì khi khởi động.");
-            //log.info("⚠️  Bot đang ở chế độ bảo trì (đọc từ Redis).");
-       // }
+            log.info("⚠️  Bot đang ở chế độ bảo trì (đọc từ Redis).");
+        }
     }
 
     public void enableMaintenance() {

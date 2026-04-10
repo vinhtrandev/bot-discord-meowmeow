@@ -4,13 +4,15 @@ import com.vinhtran.dogbot.service.MaintenanceService;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import net.dv8tion.jda.api.JDA;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 @Slf4j
 @Component
 public class ShutdownHandler {
 
-    private static final String CHANNEL_ID = "1491539644515483668";
+    @Value("${bot.status-channel-id}")
+    private String channelId;
 
     private final MaintenanceService maintenanceService;
     private final JDA jda;
@@ -24,13 +26,15 @@ public class ShutdownHandler {
     public void onShutdown() {
         log.info("🔧 Bot đang tắt — bật bảo trì...");
 
-        // Lưu vào Redis trước
         maintenanceService.enableMaintenance();
 
-        // Thông báo Discord (.complete() vì process sắp tắt)
-        var channel = jda.getTextChannelById(CHANNEL_ID);
-        if (channel != null) {
-            channel.sendMessage("🔧 **Bot đang bảo trì, vui lòng chờ ít phút...**").complete();
+        try {
+            var channel = jda.getTextChannelById(channelId);
+            if (channel != null) {
+                channel.sendMessage("🔧 **Bot đang bảo trì, vui lòng chờ ít phút...**").complete();
+            }
+        } catch (Exception e) {
+            log.warn("Không thể gửi thông báo shutdown: {}", e.getMessage());
         }
 
         log.info("✅ Hoàn tất shutdown.");
