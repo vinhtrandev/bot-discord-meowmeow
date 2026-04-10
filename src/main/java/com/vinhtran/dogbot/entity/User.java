@@ -2,42 +2,30 @@ package com.vinhtran.dogbot.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
-
 import java.time.LocalDateTime;
-import java.util.List;
 
 @Entity
-@Table(name = "users")
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
+@Table(name = "users",
+        uniqueConstraints = @UniqueConstraint(columnNames = {"discord_id", "server_id"}))
+@Builder @NoArgsConstructor @AllArgsConstructor @Getter @Setter
 public class User {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "discord_id", unique = true, nullable = false)
+    @Column(name = "discord_id", nullable = false)
     private String discordId;
 
-    @Column(nullable = false)
+    @Column(name = "server_id", nullable = false)
+    private String serverId;
+
+    @Column(name = "username", nullable = false)
     private String username;
 
-    @Column(name = "is_banned")
-    private Boolean isBanned;
+    @Builder.Default
+    private Boolean isBanned = false;
 
     @Column(name = "created_at")
     private LocalDateTime createdAt;
-
-    @OneToOne(mappedBy = "user", cascade = CascadeType.ALL)
-    private UserCoin userCoin;
-
-    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL)
-    private List<GameHistory> gameHistories;
-
-    @PrePersist
-    protected void onCreate() {
-        createdAt = LocalDateTime.now();
-    }
 }

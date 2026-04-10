@@ -3,18 +3,23 @@ package com.vinhtran.dogbot.entity;
 import jakarta.persistence.*;
 import lombok.*;
 
-@Entity @Table(name = "user_coins")
-@Data @Builder @NoArgsConstructor @AllArgsConstructor
+@Entity
+@Table(name = "user_coins")
+@Builder @NoArgsConstructor @AllArgsConstructor @Getter @Setter
 public class UserCoin {
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @OneToOne @JoinColumn(name = "user_id", unique = true)
+    @OneToOne
+    @JoinColumn(name = "user_id", unique = true)
     private User user;
 
     @Column(nullable = false)
-    private Long balance;
+    @Builder.Default
+    private Long balance = 0L;
 
-    @Column(name = "total_earned")
+    @Builder.Default
     private Long totalEarned = 0L;
 }

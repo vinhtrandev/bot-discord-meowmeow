@@ -12,24 +12,24 @@ public class CoupleRelation {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // discordId của người gửi
+    @Column(name = "server_id", nullable = false)
+    private String serverId;
+
     @Column(name = "user_a_id", nullable = false)
     private String userAId;
 
-    // discordId của người nhận
     @Column(name = "user_b_id", nullable = false)
     private String userBId;
 
-    // itemId của nhẫn/skin cặp đôi
     @Column(name = "ring_item_id")
     private String ringItemId;
 
+    @Column(nullable = false)
+    @Builder.Default
+    private String status = "PENDING";
+
     @Column(name = "created_at")
     private LocalDateTime createdAt;
-
-    // PENDING (chờ chấp nhận), ACTIVE (đã ghép đôi)
-    @Column(nullable = false)
-    private String status = "PENDING";
 
     @PrePersist
     protected void onCreate() { createdAt = LocalDateTime.now(); }

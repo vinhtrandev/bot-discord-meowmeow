@@ -19,33 +19,28 @@ public class StealCommand implements Command {
     private final StealService stealService;
 
     @Override
-    public String getName() {
-        return "!steal";
-    }
+    public String getName() { return "!steal"; }
 
     @Override
     public void execute(MessageReceivedEvent event, String[] args) {
-        // 1. Kiểm tra xem có tag ai không
         if (event.getMessage().getMentions().getMembers().isEmpty()) {
             event.getChannel().sendMessage("❌ Bạn cần tag người muốn trộm! HD: `!steal @username`").queue();
             return;
         }
 
-        Member target = event.getMessage().getMentions().getMembers().get(0);
-        String thiefId = event.getAuthor().getId();
+        Member target   = event.getMessage().getMentions().getMembers().get(0);
+        String thiefId  = event.getAuthor().getId();
         String targetId = target.getId();
+        String serverId = event.getGuild().getId();
 
-        // Không cho phép trộm Bot
         if (target.getUser().isBot()) {
-            event.getChannel().sendMessage("🤖 Bạn không thể trộm tiền của Bot đâu, nó không có ví đâu!").queue();
+            event.getChannel().sendMessage("🤖 Bạn không thể trộm tiền của Bot!").queue();
             return;
         }
 
         try {
-            // 2. Gọi Service xử lý logic
-            StealService.StealResult result = stealService.steal(thiefId, targetId);
+            StealService.StealResult result = stealService.steal(thiefId, targetId, serverId);
 
-            // 3. Xây dựng thông báo kết quả bằng Embed
             EmbedBuilder embed = new EmbedBuilder()
                     .setAuthor(event.getAuthor().getName(), null, event.getAuthor().getEffectiveAvatarUrl())
                     .setTimestamp(Instant.now());
@@ -54,24 +49,21 @@ public class StealCommand implements Command {
                 embed.setTitle("💰 PHI VỤ THÀNH CÔNG!")
                         .setDescription(String.format("Bạn đã lẻn vào nhà **%s** và lấy đi **%d** 🪙!",
                                 target.getEffectiveName(), result.amount()))
-                        .setColor(Color.GREEN)
-                        .setThumbnail("https://cdn-icons-png.flaticon.com/512/1039/1039328.png"); // Icon túi tiền
+                        .setColor(Color.GREEN);
             } else {
                 embed.setTitle("🚔 PHI VỤ THẤT BẠI!")
-                        .setDescription(String.format("Cảnh sát đã tóm gọn bạn tại nhà **%s**!\nBạn bị phạt **%d** 🪙 vì tội trộm cắp.",
+                        .setDescription(String.format("Cảnh sát đã tóm gọn bạn tại nhà **%s**!\nBạn bị phạt **%d** 🪙.",
                                 target.getEffectiveName(), result.amount()))
-                        .setColor(Color.RED)
-                        .setThumbnail("https://cdn-icons-png.flaticon.com/512/1022/1022333.png"); // Icon cảnh sát
+                        .setColor(Color.RED);
             }
 
             event.getChannel().sendMessageEmbeds(embed.build()).queue();
 
         } catch (RuntimeException e) {
-            // Xử lý các lỗi như: Trùng ID, Hết tiền, Đang trong cooldown
             event.getChannel().sendMessage("⚠️ " + e.getMessage()).queue();
         } catch (Exception e) {
             log.error("Lỗi lệnh steal: ", e);
-            event.getChannel().sendMessage("❌ Đã xảy ra lỗi hệ thống khi đi trộm!").queue();
+            event.getChannel().sendMessage("❌ Đã xảy ra lỗi hệ thống!").queue();
         }
     }
 }

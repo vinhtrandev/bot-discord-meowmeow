@@ -3,39 +3,36 @@ package com.vinhtran.dogbot.service;
 import com.vinhtran.dogbot.entity.BankAccount;
 import com.vinhtran.dogbot.entity.User;
 import com.vinhtran.dogbot.repository.BankAccountRepository;
-import com.vinhtran.dogbot.repository.UserCoinRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-@Service @RequiredArgsConstructor @Transactional
+import java.time.LocalDateTime;
+
+@Service
+@RequiredArgsConstructor
+@Transactional
 public class BankService {
 
     private final BankAccountRepository bankAccountRepository;
-    private final UserCoinRepository userCoinRepository;
     private final UserService userService;
 
-    // Tier info
-    public static final long[] TIER_COST    = {0, 500, 2000, 5000, 15000};
-    public static final long[] TIER_MAX     = {0, 5000, 20000, 100000, 999999999};
-    public static final String[] TIER_NAME  = {"Chưa mở", "🥉 Đồng", "🥈 Bạc", "🥇 Vàng", "💎 Kim Cương"};
+    public static final long[] TIER_COST = {0, 500, 5000, 20000, 100000};
+    public static final long[] TIER_MAX  = {0, 5000, 50000, 250000, 1000000000}; // 1 Tỷ
+    public static final String[] TIER_NAME = {"Chưa mở", "🥉 Đồng", "🥈 Bạc", "🥇 Vàng", "💎 Kim Cương"};
 
-    public BankAccount openBank(String discordId, int tier) {
-        User user = userService.getUser(discordId);
+    public BankAccount openBank(String discordId, String serverId, int tier) {
+        User user = userService.getOrCreate(discordId, serverId);
 
-        // Kiểm tra đã có tài khoản chưa
-        BankAccount existing = bankAccountRepository.findByUserDiscordId(discordId).orElse(null);
-        if (existing != null && existing.getTier() >= tier) {
+        BankAccount existing = bankAccountRepository.findByUserId(user.getId()).orElse(null);
+        if (existing != null && existing.getTier() >= tier)
             throw new RuntimeException("Bạn đã có tài khoản **" + TIER_NAME[existing.getTier()] + "** rồi!");
-        }
 
-        long cost = TIER_COST[tier];
-        long balance = userService.getBalance(discordId);
-        if (balance < cost) {
-            throw new RuntimeException("Không đủ coin! Cần **" + cost + " 🪙**, bạn có **" + balance + " 🪙**");
-        }
+        long balance = userService.getBalance(discordId, serverId);
+        if (balance < TIER_COST[tier])
+            throw new RuntimeException("Không đủ coin! Cần **" + TIER_COST[tier] + " 🪙**, bạn có **" + balance + " 🪙**");
 
-        userService.updateBalance(discordId, -cost);
+        userService.updateBalance(discordId, serverId, -TIER_COST[tier]);
 
         if (existing != null) {
             existing.setTier(tier);
@@ -43,35 +40,35 @@ public class BankService {
             return bankAccountRepository.save(existing);
         }
 
-        BankAccount bank = BankAccount.builder()
-                .user(user).balance(0L)
-                .tier(tier).maxBalance(TIER_MAX[tier])
-                .openedAt(java.time.LocalDateTime.now())
-                .build();
-        return bankAccountRepository.save(bank);
+        return bankAccountRepository.save(BankAccount.builder()
+                .user(user)
+                .balance(0L)
+                .tier(tier)
+                .maxBalance(TIER_MAX[tier])
+                .openedAt(LocalDateTime.now())
+                .build());
     }
 
-    public void deposit(String discordId, long amount) {
-        BankAccount bank = bankAccountRepository.findByUserDiscordId(discordId)
+    public void deposit(String discordId, String serverId, long amount) {
+        User user = userService.getOrCreate(discordId, serverId);
+        BankAccount bank = bankAccountRepository.findByUserId(user.getId())
                 .orElseThrow(() -> new RuntimeException("Bạn chưa mở tài khoản ngân hàng! Dùng `!bank mo <tier>`"));
 
-        if (bank.getTier() == 0)
-            throw new RuntimeException("Tài khoản chưa được kích hoạt!");
-
-        long wallet = userService.getBalance(discordId);
+        long wallet = userService.getBalance(discordId, serverId);
         if (amount > wallet)
             throw new RuntimeException("Ví không đủ! Ví có **" + wallet + " 🪙**");
         if (bank.getBalance() + amount > bank.getMaxBalance())
             throw new RuntimeException("Vượt giới hạn tài khoản **" + TIER_NAME[bank.getTier()]
                     + "**! Tối đa: **" + bank.getMaxBalance() + " 🪙**");
 
-        userService.updateBalance(discordId, -amount);
+        userService.updateBalance(discordId, serverId, -amount);
         bank.setBalance(bank.getBalance() + amount);
         bankAccountRepository.save(bank);
     }
 
-    public void withdraw(String discordId, long amount) {
-        BankAccount bank = bankAccountRepository.findByUserDiscordId(discordId)
+    public void withdraw(String discordId, String serverId, long amount) {
+        User user = userService.getUser(discordId, serverId);
+        BankAccount bank = bankAccountRepository.findByUserId(user.getId())
                 .orElseThrow(() -> new RuntimeException("Bạn chưa mở tài khoản ngân hàng!"));
 
         if (amount > bank.getBalance())
@@ -79,13 +76,16 @@ public class BankService {
 
         bank.setBalance(bank.getBalance() - amount);
         bankAccountRepository.save(bank);
-        userService.updateBalance(discordId, amount);
+        userService.updateBalance(discordId, serverId, amount);
     }
 
-    public void transfer(String fromDiscordId, String toDiscordId, long amount) {
-        BankAccount from = bankAccountRepository.findByUserDiscordId(fromDiscordId)
+    public void transfer(String fromDiscordId, String toDiscordId, String serverId, long amount) {
+        User fromUser = userService.getUser(fromDiscordId, serverId);
+        User toUser   = userService.getUser(toDiscordId, serverId);
+
+        BankAccount from = bankAccountRepository.findByUserId(fromUser.getId())
                 .orElseThrow(() -> new RuntimeException("Bạn chưa mở tài khoản ngân hàng!"));
-        BankAccount to = bankAccountRepository.findByUserDiscordId(toDiscordId)
+        BankAccount to   = bankAccountRepository.findByUserId(toUser.getId())
                 .orElseThrow(() -> new RuntimeException("Người nhận chưa mở tài khoản ngân hàng!"));
 
         if (amount <= 0)
@@ -101,8 +101,9 @@ public class BankService {
         bankAccountRepository.save(to);
     }
 
-    public BankAccount getBank(String discordId) {
-        return bankAccountRepository.findByUserDiscordId(discordId)
+    public BankAccount getBank(String discordId, String serverId) {
+        User user = userService.getUser(discordId, serverId);
+        return bankAccountRepository.findByUserId(user.getId())
                 .orElseThrow(() -> new RuntimeException("Bạn chưa mở tài khoản ngân hàng!"));
     }
 }

@@ -4,18 +4,23 @@ import jakarta.persistence.*;
 import lombok.*;
 
 @Entity
-@Table(name = "shop_items")
+@Table(name = "shop_items",
+        uniqueConstraints = @UniqueConstraint(columnNames = {"item_id", "server_id"}))
 @Data @Builder @NoArgsConstructor @AllArgsConstructor
 public class ShopItem {
 
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(unique = true, nullable = false)
-    private String itemId; // "skin_cute", "skin_anime", "frame_gold"...
+    @Column(name = "item_id", nullable = false)
+    private String itemId;
+
+    // NULL = global (tất cả server dùng chung), có giá trị = riêng server đó
+    @Column(name = "server_id")
+    private String serverId;
 
     @Column(nullable = false)
-    private String name; // "Skin Cute"
+    private String name;
 
     @Column(nullable = false)
     private String description;
@@ -23,13 +28,14 @@ public class ShopItem {
     @Column(nullable = false)
     private Long price;
 
-    // SKIN_BAI, FRAME, TITLE, COUPLE_RING
+    // SKIN_BAI, FRAME, COUPLE_RING
     @Column(nullable = false)
     private String type;
 
     @Column(nullable = false)
-    private String emoji; // emoji hiển thị
+    private String emoji;
 
     @Column(nullable = false)
-    private Boolean isCouple = false; // vật phẩm cặp đôi không
+    @Builder.Default
+    private Boolean isCouple = false;
 }

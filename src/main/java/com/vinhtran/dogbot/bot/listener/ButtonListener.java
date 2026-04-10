@@ -2,6 +2,7 @@ package com.vinhtran.dogbot.bot.listener;
 
 import com.vinhtran.dogbot.command.BaicaoCommand;
 import com.vinhtran.dogbot.command.BlackjackCommand;
+import com.vinhtran.dogbot.command.CoupleCommand;
 import com.vinhtran.dogbot.game.BaicaoGame;
 import com.vinhtran.dogbot.game.BlackjackGame;
 import com.vinhtran.dogbot.game.GameResult;
@@ -34,6 +35,14 @@ public class ButtonListener extends ListenerAdapter {
     private final BlackjackCommand        blackjackCommand;
     private final BaicaoCommand           baicaoCommand;
     private final SoloSessionService      soloService;
+    private final CoupleCommand           coupleCommand;   // ← thêm
+
+    // =========================================================
+    // HELPER
+    // =========================================================
+    private String getServerId(ButtonInteractionEvent event) {
+        return event.getGuild() != null ? event.getGuild().getId() : null;
+    }
 
     @Override
     public void onButtonInteraction(ButtonInteractionEvent event) {
@@ -47,6 +56,8 @@ public class ButtonListener extends ListenerAdapter {
                 handleTransfer(event, parts);
             } else if (parts[0].startsWith("solo_")) {
                 handleSolo(event, parts);
+            } else if (parts[0].equals("couple_breakup_confirm") || parts[0].equals("couple_breakup_cancel")) {
+                handleCouple(event, parts);   // ← thêm
             }
         } catch (Exception e) {
             e.printStackTrace();
@@ -56,12 +67,27 @@ public class ButtonListener extends ListenerAdapter {
     }
 
     // =========================================================
+    // COUPLE
+    // =========================================================
+    private void handleCouple(ButtonInteractionEvent event, String[] parts) {
+        String action = parts[0];
+        String userId = parts[1];
+
+        if (action.equals("couple_breakup_confirm")) {
+            coupleCommand.handleBreakUpConfirm(event, userId);
+        } else {
+            coupleCommand.handleBreakUpCancel(event, userId);
+        }
+    }
+
+    // =========================================================
     // BLACKJACK THƯỜNG
     // =========================================================
     private void handleBlackjack(ButtonInteractionEvent event, String[] parts) {
-        String action = parts[0].replace("bj_", "");
-        String userId = parts[1];
-        long   bet    = Long.parseLong(parts[2]);
+        String action   = parts[0].replace("bj_", "");
+        String userId   = parts[1];
+        long   bet      = Long.parseLong(parts[2]);
+        String serverId = getServerId(event);
 
         if (!event.getUser().getId().equals(userId)) {
             event.reply("Đây không phải ván của bạn!").setEphemeral(true).queue();
@@ -75,7 +101,7 @@ public class ButtonListener extends ListenerAdapter {
         }
 
         String username  = event.getMember() != null ? event.getMember().getEffectiveName() : event.getUser().getName();
-        String skinEmoji = blackjackCommand.getSkinEmoji(userId);
+        String skinEmoji = blackjackCommand.getSkinEmoji(userId, serverId);
 
         event.deferEdit().queue();
 
@@ -83,7 +109,7 @@ public class ButtonListener extends ListenerAdapter {
             case "hit" -> {
                 game.playerHit();
                 if (game.playerBust()) {
-                    gameService.recordResult(userId, "BLACKJACK", bet, "LOSE");
+                    gameService.recordResult(userId, serverId, "BLACKJACK", bet, "LOSE");
                     bjService.clear(userId);
                     editFinal(event, game, skinEmoji, username,
                             "💥 Quắc! **" + username + "** thua **" + bet + " coin**", Color.RED);
@@ -91,7 +117,7 @@ public class ButtonListener extends ListenerAdapter {
                     GameResult result = game.determineResultAfterDealer();
                     long   prize = calcPrize(result, bet, false);
                     String msg   = buildMsg(result, username, bet, prize, false);
-                    gameService.recordResult(userId, "BLACKJACK", bet, toSimple(result));
+                    gameService.recordResult(userId, serverId, "BLACKJACK", bet, toSimple(result));
                     bjService.clear(userId);
                     editFinal(event, game, skinEmoji, username, msg, resultColor(result));
                 } else {
@@ -100,7 +126,7 @@ public class ButtonListener extends ListenerAdapter {
             }
             case "stand" -> {
                 if (!game.canPlayerStand()) {
-                    gameService.recordResult(userId, "BLACKJACK", bet, "LOSE");
+                    gameService.recordResult(userId, serverId, "BLACKJACK", bet, "LOSE");
                     bjService.clear(userId);
                     editFinal(event, game, skinEmoji, username,
                             "🔴 Dằn non! **" + username + "** chưa đủ 16 điểm → Thua **" + bet + " coin**", Color.RED);
@@ -109,12 +135,12 @@ public class ButtonListener extends ListenerAdapter {
                 GameResult result = game.determineResultAfterDealer();
                 long   prize = calcPrize(result, bet, false);
                 String msg   = buildMsg(result, username, bet, prize, false);
-                gameService.recordResult(userId, "BLACKJACK", bet, toSimple(result));
+                gameService.recordResult(userId, serverId, "BLACKJACK", bet, toSimple(result));
                 bjService.clear(userId);
                 editFinal(event, game, skinEmoji, username, msg, resultColor(result));
             }
             case "double" -> {
-                long balance = userService.getBalance(userId);
+                long balance = userService.getBalance(userId, serverId);
                 if (balance < bet) {
                     event.getHook().sendMessage("Không đủ coin để gấp đôi!").setEphemeral(true).queue();
                     return;
@@ -123,7 +149,7 @@ public class ButtonListener extends ListenerAdapter {
                 bjService.saveGame(userId, game, newBet);
                 game.playerHit();
                 if (game.playerBust()) {
-                    gameService.recordResult(userId, "BLACKJACK", newBet, "LOSE");
+                    gameService.recordResult(userId, serverId, "BLACKJACK", newBet, "LOSE");
                     bjService.clear(userId);
                     editFinal(event, game, skinEmoji, username,
                             "💥 Quắc! **" + username + "** thua **" + newBet + " coin** (Gấp đôi)", Color.RED);
@@ -131,7 +157,7 @@ public class ButtonListener extends ListenerAdapter {
                     GameResult result = game.determineResultAfterDealer();
                     long   prize = calcPrize(result, newBet, true);
                     String msg   = buildMsg(result, username, newBet, prize, true);
-                    gameService.recordResult(userId, "BLACKJACK", newBet, toSimple(result));
+                    gameService.recordResult(userId, serverId, "BLACKJACK", newBet, toSimple(result));
                     bjService.clear(userId);
                     editFinal(event, game, skinEmoji, username, msg, resultColor(result));
                 }
@@ -209,11 +235,13 @@ public class ButtonListener extends ListenerAdapter {
 
         event.deferEdit().queue();
 
+        String serverId = getServerId(event);
+
         if (parts[0].equals("transfer_confirm")) {
             try {
-                bankService.transfer(ownerId, data.target(), data.amount());
+                bankService.transfer(ownerId, data.target(), serverId, data.amount());
                 String receiverName;
-                try { receiverName = userService.getUser(data.target()).getUsername(); }
+                try { receiverName = userService.getUser(data.target(), serverId).getDiscordId(); }
                 catch (Exception e) { receiverName = data.target(); }
                 event.getHook().editOriginalEmbeds(new EmbedBuilder()
                         .setTitle("✅ Chuyển khoản thành công!")
@@ -239,6 +267,7 @@ public class ButtonListener extends ListenerAdapter {
     private void handleSolo(ButtonInteractionEvent event, String[] parts) {
         String action       = parts[0];
         String challengerId = parts[1];
+        String serverId     = getServerId(event);
 
         SoloSession session = soloService.getByChallenger(challengerId);
         if (session == null) {
@@ -340,16 +369,14 @@ public class ButtonListener extends ListenerAdapter {
 
             event.deferEdit().queue();
 
-            // ── Kiểm tra kết thúc ngay nếu ai có Xì Bàn hoặc Xì Dách ───
             boolean cSpecial = cBj.isPlayerXiBang() || cBj.isPlayerXiDach();
             boolean tSpecial = tBj.isPlayerXiBang() || tBj.isPlayerXiDach();
 
             if (cSpecial || tSpecial) {
-                resolveInstantSoloBj(event, session, cBj, tBj);
+                resolveInstantSoloBj(event, session, cBj, tBj, serverId);
                 return;
             }
 
-            // ── Không có bài đặc biệt → Challenger chơi trước ────────────
             try {
                 byte[] publicImg = BlackjackGame.getSoloImagePublic(
                         session.getChallengerName(), cBj,
@@ -390,8 +417,8 @@ public class ButtonListener extends ListenerAdapter {
             long finalBet = action.equals("solo_bc_double") ? session.getBet() * 2 : session.getBet();
 
             if (action.equals("solo_bc_double")) {
-                long cBal = userService.getBalance(session.getChallengerId());
-                long tBal = userService.getBalance(session.getTargetId());
+                long cBal = userService.getBalance(session.getChallengerId(), serverId);
+                long tBal = userService.getBalance(session.getTargetId(),     serverId);
                 if (cBal < finalBet || tBal < finalBet) {
                     event.reply("❌ Một trong hai người không đủ coin để gấp đôi!").setEphemeral(true).queue();
                     return;
@@ -407,14 +434,14 @@ public class ButtonListener extends ListenerAdapter {
             Color  color;
             if (result.equals("WIN")) {
                 long prize = game.calcPrize(session.getChallengerHand(), finalBet);
-                userService.updateBalance(session.getChallengerId(),  prize);
-                userService.updateBalance(session.getTargetId(),     -finalBet);
+                userService.updateBalance(session.getChallengerId(), serverId,  prize);
+                userService.updateBalance(session.getTargetId(),     serverId, -finalBet);
                 msg   = "🎉 **" + session.getChallengerName() + "** thắng **" + prize + " coin**!";
                 color = Color.GREEN;
             } else if (result.equals("LOSE")) {
                 long prize = game.calcPrize(session.getTargetHand(), finalBet);
-                userService.updateBalance(session.getTargetId(),      prize);
-                userService.updateBalance(session.getChallengerId(), -finalBet);
+                userService.updateBalance(session.getTargetId(),     serverId,  prize);
+                userService.updateBalance(session.getChallengerId(), serverId, -finalBet);
                 msg   = "🎉 **" + session.getTargetName() + "** thắng **" + prize + " coin**!";
                 color = Color.GREEN;
             } else {
@@ -456,13 +483,11 @@ public class ButtonListener extends ListenerAdapter {
             boolean isChallenger = role.equals("challenger");
             String  expectedId   = isChallenger ? session.getChallengerId() : session.getTargetId();
 
-            // Chỉ đúng người mới được xem
             if (!event.getUser().getId().equals(expectedId)) {
                 event.reply("❌ Đây không phải bài của bạn!").setEphemeral(true).queue();
                 return;
             }
 
-            // Kiểm tra đúng lượt
             if (isChallenger && session.isChallengerDone()) {
                 event.reply("❌ Bạn đã dừng rồi, chờ đối thủ!").setEphemeral(true).queue();
                 return;
@@ -520,7 +545,6 @@ public class ButtonListener extends ListenerAdapter {
                 return;
             }
 
-            // Kiểm tra đúng lượt (target chưa được chơi nếu challenger chưa xong)
             if (!isChallenger && !session.isChallengerDone()) {
                 event.reply("❌ Chờ **" + session.getChallengerName() + "** chơi xong trước!").setEphemeral(true).queue();
                 return;
@@ -530,7 +554,6 @@ public class ButtonListener extends ListenerAdapter {
 
             BlackjackGame myGame = isChallenger ? session.getChallengerBj() : session.getTargetBj();
 
-            // Rút bài nếu là hit
             if (action.equals("solo_bj_hit")) myGame.playerHit();
 
             boolean turnDone = action.equals("solo_bj_stand")
@@ -538,7 +561,6 @@ public class ButtonListener extends ListenerAdapter {
                     || myGame.isPlayerNguLinh();
 
             if (!turnDone) {
-                // ── Vẫn còn lượt — cập nhật ephemeral ──────────────────
                 try {
                     byte[] privateImg = isChallenger
                             ? BlackjackGame.getSoloImageForChallenger(
@@ -564,7 +586,6 @@ public class ButtonListener extends ListenerAdapter {
                                     Button.danger ("solo_bj_stand:" + challengerId + ":" + role, "✋ Dừng")
                             ).queue();
 
-                    // Cập nhật public message (bài vẫn úp)
                     updatePublicMessage(event, session, challengerId, playerName, role);
 
                 } catch (Exception e) {
@@ -580,13 +601,11 @@ public class ButtonListener extends ListenerAdapter {
             } else if (myGame.isPlayerNguLinh()) {
                 doneNote = "🖐️ **" + playerName + "** NGŨ LINH! (" + myGame.getPlayerScore() + " điểm)";
             } else if (!myGame.canPlayerStand() && action.equals("solo_bj_stand")) {
-                // Dằn non — tính thua ngay
                 doneNote = "🔴 **" + playerName + "** dằn non! (chưa đủ 16 điểm)";
             } else {
                 doneNote = "✅ **" + playerName + "** dừng (" + myGame.getPlayerScore() + " điểm)";
             }
 
-            // Ẩn nút trên ephemeral
             event.getHook().editOriginal(
                     "✅ **Bạn đã " + (action.equals("solo_bj_stand") ? "dừng" : "xong lượt") + "** với **"
                             + myGame.getPlayerScore() + " điểm**.\n"
@@ -596,7 +615,6 @@ public class ButtonListener extends ListenerAdapter {
             ).setComponents().queue();
 
             if (isChallenger) {
-                // ── Challenger xong → chuyển lượt sang target ────────────
                 session.setChallengerDone(true);
 
                 try {
@@ -618,9 +636,8 @@ public class ButtonListener extends ListenerAdapter {
                 }
 
             } else {
-                // ── Target xong → tính kết quả ────────────────────────────
                 session.setTargetDone(true);
-                resolveSoloBj(event, session);
+                resolveSoloBj(event, session, serverId);
             }
         }
     }
@@ -629,7 +646,7 @@ public class ButtonListener extends ListenerAdapter {
     // SOLO XÌ DÁCH — KẾT THÚC NGAY (Xì Bàn / Xì Dách)
     // =========================================================
     private void resolveInstantSoloBj(ButtonInteractionEvent event, SoloSession session,
-                                      BlackjackGame cBj, BlackjackGame tBj) {
+                                      BlackjackGame cBj, BlackjackGame tBj, String serverId) {
         long   bet        = session.getBet();
         int    cmp        = BlackjackGame.compareSolo(cBj, tBj);
         String resultLine = session.getChallengerName() + ": **" + cBj.getSoloResultDesc() + "**"
@@ -638,13 +655,13 @@ public class ButtonListener extends ListenerAdapter {
         Color  color;
 
         if (cmp > 0) {
-            userService.updateBalance(session.getChallengerId(),  bet);
-            userService.updateBalance(session.getTargetId(),     -bet);
+            userService.updateBalance(session.getChallengerId(), serverId,  bet);
+            userService.updateBalance(session.getTargetId(),     serverId, -bet);
             msg   = "🎉 **" + session.getChallengerName() + "** thắng **" + bet + " coin**!";
             color = Color.GREEN;
         } else if (cmp < 0) {
-            userService.updateBalance(session.getTargetId(),      bet);
-            userService.updateBalance(session.getChallengerId(), -bet);
+            userService.updateBalance(session.getTargetId(),     serverId,  bet);
+            userService.updateBalance(session.getChallengerId(), serverId, -bet);
             msg   = "🎉 **" + session.getTargetName() + "** thắng **" + bet + " coin**!";
             color = Color.GREEN;
         } else {
@@ -682,13 +699,11 @@ public class ButtonListener extends ListenerAdapter {
     // =========================================================
     // SOLO XÌ DÁCH — KẾT THÚC SAU KHI CẢ 2 CHƠI XONG
     // =========================================================
-    private void resolveSoloBj(ButtonInteractionEvent event, SoloSession session) {
+    private void resolveSoloBj(ButtonInteractionEvent event, SoloSession session, String serverId) {
         BlackjackGame cGame = session.getChallengerBj();
         BlackjackGame tGame = session.getTargetBj();
         long bet = session.getBet();
 
-        // ── Xử lý dằn non trước khi so bài ──────────────────────────────
-        // Nếu challenger dằn non (dừng < 16 điểm và không phải ngũ linh/bust)
         boolean cDanNon = !cGame.playerBust() && !cGame.isPlayerNguLinh()
                 && !cGame.isPlayerXiBang() && !cGame.isPlayerXiDach()
                 && cGame.getPlayerScore() < 16;
@@ -702,31 +717,29 @@ public class ButtonListener extends ListenerAdapter {
                 + " | " + session.getTargetName() + ": **" + tGame.getSoloResultDesc() + "**";
 
         if (cDanNon && tDanNon) {
-            // Cả 2 dằn non → hòa
             msg   = "🤝 Cả hai dằn non — hoàn lại **" + bet + " coin**";
             color = Color.YELLOW;
         } else if (cDanNon) {
-            userService.updateBalance(session.getTargetId(),      bet);
-            userService.updateBalance(session.getChallengerId(), -bet);
+            userService.updateBalance(session.getTargetId(),     serverId,  bet);
+            userService.updateBalance(session.getChallengerId(), serverId, -bet);
             msg   = "🔴 **" + session.getChallengerName() + "** dằn non! **" + session.getTargetName() + "** thắng **" + bet + " coin**!";
             color = Color.RED;
         } else if (tDanNon) {
-            userService.updateBalance(session.getChallengerId(),  bet);
-            userService.updateBalance(session.getTargetId(),     -bet);
+            userService.updateBalance(session.getChallengerId(), serverId,  bet);
+            userService.updateBalance(session.getTargetId(),     serverId, -bet);
             msg   = "🔴 **" + session.getTargetName() + "** dằn non! **" + session.getChallengerName() + "** thắng **" + bet + " coin**!";
             color = Color.RED;
         } else {
-            // ── So bài đúng luật VN: Xì Bàn > Xì Dách > Ngũ Linh > Điểm > Bust ──
             int cmp = BlackjackGame.compareSolo(cGame, tGame);
 
             if (cmp > 0) {
-                userService.updateBalance(session.getChallengerId(),  bet);
-                userService.updateBalance(session.getTargetId(),     -bet);
+                userService.updateBalance(session.getChallengerId(), serverId,  bet);
+                userService.updateBalance(session.getTargetId(),     serverId, -bet);
                 msg   = "🎉 **" + session.getChallengerName() + "** thắng **" + bet + " coin**!";
                 color = Color.GREEN;
             } else if (cmp < 0) {
-                userService.updateBalance(session.getTargetId(),      bet);
-                userService.updateBalance(session.getChallengerId(), -bet);
+                userService.updateBalance(session.getTargetId(),     serverId,  bet);
+                userService.updateBalance(session.getChallengerId(), serverId, -bet);
                 msg   = "🎉 **" + session.getTargetName() + "** thắng **" + bet + " coin**!";
                 color = Color.GREEN;
             } else {

@@ -9,7 +9,10 @@ import java.util.Optional;
 
 @Repository
 public interface UserInventoryRepository extends JpaRepository<UserInventory, Long> {
-    List<UserInventory> findByUserDiscordId(String discordId);
-    Optional<UserInventory> findByUserDiscordIdAndItemId(String discordId, String itemId);
-    List<UserInventory> findByUserDiscordIdAndIsEquipped(String discordId, boolean equipped);
+
+    List<UserInventory> findByUserId(Long userId);
+
+    Optional<UserInventory> findByUserIdAndItemId(Long userId, String itemId);
+
+    List<UserInventory> findByUserIdAndIsEquipped(Long userId, boolean equipped);
 }

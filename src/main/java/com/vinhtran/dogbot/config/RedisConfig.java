@@ -11,8 +11,8 @@ import java.net.URI;
 @Configuration
 public class RedisConfig {
 
-    @Bean
-    public JedisPool jedisPool(@Value("${redis.url}") String redisUrl) {
-        return new JedisPool(new JedisPoolConfig(), URI.create(redisUrl));
+        @Bean
+        public JedisPool jedisPool(@Value("${REDIS_URL:redis://localhost:6379}") String redisUrl) {
+            return new JedisPool(new JedisPoolConfig(), URI.create(redisUrl));
+        }
     }
-}

@@ -1,10 +1,5 @@
 package com.vinhtran.dogbot.service;
 
-import com.vinhtran.dogbot.entity.GameHistory;
-import com.vinhtran.dogbot.entity.Leaderboard;
-import com.vinhtran.dogbot.entity.User;
-import com.vinhtran.dogbot.repository.GameHistoryRepository;
-import com.vinhtran.dogbot.repository.LeaderboardRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -14,27 +9,22 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional
 public class GameService {
 
-    private final GameHistoryRepository gameHistoryRepository;
-    private final LeaderboardRepository leaderboardRepository;
     private final UserService userService;
 
-    public void recordResult(String discordId, String gameType, long bet, String result) {
-        User user = userService.getUser(discordId);
+    /**
+     * Ghi nhận kết quả game và cập nhật balance.
+     * Không lưu GameHistory (tốn DB).
+     * Leaderboard lấy từ user_coins trực tiếp qua UserService.getLeaderboard().
+     */
+    public void recordResult(String discordId, String serverId, String gameType, long bet, String result) {
+        long delta = switch (result) {
+            case "WIN"  ->  bet;
+            case "LOSE" -> -bet;
+            default     ->  0L;  // TIE hoặc các trường hợp khác
+        };
 
-        long profitLoss = result.equals("WIN") ? bet : result.equals("LOSE") ? -bet : 0;
-        userService.updateBalance(discordId, profitLoss);
-
-        gameHistoryRepository.save(GameHistory.builder()
-                .user(user).gameType(gameType)
-                .betAmount(bet).result(result).profitLoss(profitLoss).build());
-
-        Leaderboard lb = leaderboardRepository.findByUserDiscordId(discordId).orElseThrow();
-        lb.setGamesPlayed(lb.getGamesPlayed() + 1);
-        if (result.equals("WIN")) {
-            lb.setGamesWon(lb.getGamesWon() + 1);
-            lb.setTotalWinnings(lb.getTotalWinnings() + profitLoss);
+        if (delta != 0) {
+            userService.updateBalance(discordId, serverId, delta);
         }
-        lb.setWinRate((double) lb.getGamesWon() / lb.getGamesPlayed() * 100);
-        leaderboardRepository.save(lb);
     }
 }

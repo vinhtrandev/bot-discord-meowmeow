@@ -126,19 +126,44 @@ public class CardImageGenerator {
     }
 
     // =====================================================================
-    // PUBLIC API — SOLO XÌ DÁCH
+    // PUBLIC API — SOLO XÌ DÁCH / BÀI CÀO
+    // topTurn=null → hiện kết quả (không có mũi tên)
+    // hideTopLast / hideBottomLast → úp lá cuối
     // =====================================================================
     public static InputStream drawSolo(
-            String topLabel,    List<Card> topHand,    int topScore,    boolean hideTopAll,
-            String bottomLabel, List<Card> bottomHand, int bottomScore, boolean hideBottomAll,
+            String topLabel,    List<Card> topHand,    int topScore,    boolean hideTopLast,
+            String bottomLabel, List<Card> bottomHand, int bottomScore, boolean hideBottomLast,
             boolean topTurn,
             String statusLine) throws Exception {
+
+        return drawSoloInternal(topLabel, topHand, topScore, hideTopLast,
+                bottomLabel, bottomHand, bottomScore, hideBottomLast,
+                Boolean.TRUE.equals(topTurn) ? Boolean.TRUE : Boolean.FALSE,
+                statusLine, false);
+    }
+
+    // Overload dùng cho kết quả — không hiện mũi tên
+    public static InputStream drawSoloFinal(
+            String topLabel,    List<Card> topHand,    int topScore,
+            String bottomLabel, List<Card> bottomHand, int bottomScore,
+            String statusLine) throws Exception {
+
+        return drawSoloInternal(topLabel, topHand, topScore, false,
+                bottomLabel, bottomHand, bottomScore, false,
+                null, statusLine, true);
+    }
+
+    private static InputStream drawSoloInternal(
+            String topLabel,    List<Card> topHand,    int topScore,    boolean hideTopLast,
+            String bottomLabel, List<Card> bottomHand, int bottomScore, boolean hideBottomLast,
+            Boolean topTurn,
+            String statusLine,
+            boolean isFinal) throws Exception {
 
         int cardAreaW = MAX_CARDS * CARD_W + (MAX_CARDS - 1) * GAP;
         int scoreW    = 80;
         int totalW    = PAD_X + cardAreaW + scoreW + PAD_X;
 
-        // Tách statusLine thành nhiều dòng nếu chứa " | "
         String[] statusLines = (statusLine != null)
                 ? statusLine.split(" \\| ")
                 : new String[0];
@@ -157,20 +182,22 @@ public class CardImageGenerator {
         int y = PAD_Y;
 
         // ── Hàng trên ────────────────────────────────────────────────────
-        String topScoreStr = hideTopAll ? "?" : topScore + " điểm";
-        String topLabelStr = (topTurn ? "\u25b6 " : "") + topLabel + ":";
-        drawSoloRow(g, topLabelStr, topHand, topScoreStr, hideTopAll, topTurn,
+        boolean topIsActive = !isFinal && Boolean.TRUE.equals(topTurn);
+        String topScoreStr = hideTopLast ? "?" : topScore + " điểm";
+        String topLabelStr = (topIsActive ? "\u25b6 " : "") + topLabel + ":";
+        drawSoloRow(g, topLabelStr, topHand, topScoreStr, hideTopLast, topIsActive,
                 PAD_X, y, cardAreaW, scoreW);
         y += oneRowH + ROW_GAP;
 
         // ── Hàng dưới ────────────────────────────────────────────────────
-        String botScoreStr = hideBottomAll ? "?" : bottomScore + " điểm";
-        String botLabelStr = (!topTurn ? "\u25b6 " : "") + bottomLabel + ":";
-        drawSoloRow(g, botLabelStr, bottomHand, botScoreStr, hideBottomAll, !topTurn,
+        boolean botIsActive = !isFinal && !Boolean.TRUE.equals(topTurn);
+        String botScoreStr = hideBottomLast ? "?" : bottomScore + " điểm";
+        String botLabelStr = (botIsActive ? "\u25b6 " : "") + bottomLabel + ":";
+        drawSoloRow(g, botLabelStr, bottomHand, botScoreStr, hideBottomLast, botIsActive,
                 PAD_X, y, cardAreaW, scoreW);
         y += oneRowH;
 
-        // ── Dòng trạng thái (hỗ trợ nhiều dòng, tách bởi " | ") ──────────
+        // ── Dòng trạng thái ───────────────────────────────────────────────
         if (statusLines.length > 0) {
             y += 8;
             g.setColor(DIVIDER_CLR);
@@ -200,13 +227,13 @@ public class CardImageGenerator {
     }
 
     // =====================================================================
-    // VẼ 1 ROW SOLO — có highlight lượt hiện tại
+    // VẼ 1 ROW SOLO — hỗ trợ úp lá cuối
     // =====================================================================
     private static void drawSoloRow(Graphics2D g,
                                     String label,
                                     List<Card> hand,
                                     String scoreText,
-                                    boolean hideAll,
+                                    boolean hideLastCard,
                                     boolean isCurrentTurn,
                                     int startX, int y,
                                     int cardAreaW, int scoreW) {
@@ -219,12 +246,12 @@ public class CardImageGenerator {
 
         for (int i = 0; i < hand.size(); i++) {
             int cx = startX + i * (CARD_W + GAP);
-            if (hideAll) drawBack(g, cx, cardY);
-            else         drawFront(g, cx, cardY, hand.get(i));
+            if (hideLastCard && i == hand.size() - 1) drawBack(g, cx, cardY);
+            else                                       drawFront(g, cx, cardY, hand.get(i));
         }
 
         g.setFont(new Font("SansSerif", Font.BOLD, 14));
-        g.setColor(hideAll ? WAITING_CLR : SCORE_CLR);
+        g.setColor(hideLastCard ? WAITING_CLR : SCORE_CLR);
         FontMetrics sfm = g.getFontMetrics();
         String bracket = "[" + scoreText + "]";
         int scoreX = startX + cardAreaW + 8;

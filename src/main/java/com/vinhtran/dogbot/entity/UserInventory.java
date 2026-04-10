@@ -19,6 +19,7 @@ public class UserInventory {
     private String itemId;
 
     @Column(name = "is_equipped")
+    @Builder.Default
     private Boolean isEquipped = false;
 
     @Column(name = "bought_at")

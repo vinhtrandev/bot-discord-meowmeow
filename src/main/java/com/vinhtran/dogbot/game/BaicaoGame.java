@@ -40,8 +40,8 @@ public class BaicaoGame {
     public int calcScore(List<Integer> cards) {
         int total = 0;
         for (int c : cards) {
-            if (c >= 11) total += 0;   // J, Q, K = 0 (Tiên)
-            else         total += c;   // A=1, 2-10
+            if (c >= 11) total += 0;
+            else         total += c;
         }
         return total % 10;
     }
@@ -90,7 +90,6 @@ public class BaicaoGame {
         if (pRank > bRank) return "WIN";
         if (pRank < bRank) return "LOSE";
 
-        // Cùng loại bộ đặc biệt hoặc cùng điểm thường
         if (player.score() > bot.score()) return "WIN";
         if (player.score() < bot.score()) return "LOSE";
         return "DRAW";
@@ -115,32 +114,58 @@ public class BaicaoGame {
     }
 
     // =====================================================================
-    // VẼ ẢNH — 2 lá ngửa, lá 3 úp (đang chọn MỞ/GẤP ĐÔI)
+    // VẼ ẢNH — 2 lá ngửa, lá 3 úp
     // =====================================================================
     public InputStream getTableImageHidden(Hand pHand, Hand bHand, String username) throws Exception {
         List<Card> pCards = toCardList(pHand.cards());
         List<Card> bCards = toCardList(bHand.cards());
 
-        // hideDealerLast=false vì bot cũng úp lá 3 — ta dùng hideLast cho cả player
-        // Trick: truyền hideDealerLast=true để úp lá cuối của bot,
-        // còn player ta tự cắt danh sách chỉ lấy 2 lá + 1 lá úp
+        // Solo mode: username chứa " vs "
+        if (username.contains(" vs ")) {
+            String[] names = username.split(" vs ", 2);
+
+            // Chỉ lấy 2 lá đầu + thêm 1 lá úp cho cả 2
+            List<Card> pVisible = new ArrayList<>(pCards.subList(0, 2));
+            pVisible.add(new Card(0, 0)); // lá úp
+
+            List<Card> bVisible = new ArrayList<>(bCards.subList(0, 2));
+            bVisible.add(new Card(0, 0)); // lá úp
+
+            return CardImageGenerator.drawSolo(
+                    names[0], pVisible, calcScore(pHand.cards().subList(0, 2)), false,
+                    names[1], bVisible, calcScore(bHand.cards().subList(0, 2)), false,
+                    true,
+                    "🂠 Lá thứ 3 đang úp"
+            );
+        }
+
+        // Game thường — player vs bot
         List<Card> pVisible = new ArrayList<>(pCards.subList(0, 2));
-        pVisible.add(new Card(0, 0)); // placeholder — sẽ bị hideLast úp
+        pVisible.add(new Card(0, 0));
 
         return CardImageGenerator.drawTable(
                 pVisible, calcScore(pHand.cards().subList(0, 2)),
                 bCards,   bHand.score(),
-                true,     // hideDealerLast = úp lá cuối bot
+                true,
                 username
         );
     }
 
-    /**
-     * Vẽ ảnh kết quả — lật hết tất cả bài.
-     */
+    // =====================================================================
+    // VẼ ẢNH — lật hết tất cả bài
+    // =====================================================================
     public InputStream getTableImageFinal(Hand pHand, Hand bHand, String username) throws Exception {
         List<Card> pCards = toCardList(pHand.cards());
         List<Card> bCards = toCardList(bHand.cards());
+
+        if (username.contains(" vs ")) {
+            String[] names = username.split(" vs ", 2);
+            return CardImageGenerator.drawSoloFinal(
+                    names[0], pCards, pHand.score(),
+                    names[1], bCards, bHand.score(),
+                    null
+            );
+        }
 
         return CardImageGenerator.drawTable(
                 pCards, pHand.score(),
@@ -156,7 +181,7 @@ public class BaicaoGame {
     private List<Card> toCardList(List<Integer> cards) {
         Random rand = new Random();
         return cards.stream()
-                .map(val -> new Card(val, rand.nextInt(4))) // suitIndex=0 (♠) vì bài cào không chia chất(Nhưng mà nên để như này cho đẹp)
+                .map(val -> new Card(val, rand.nextInt(4)))
                 .toList();
     }
 }

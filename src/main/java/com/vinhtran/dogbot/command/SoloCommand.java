@@ -15,7 +15,7 @@ import java.awt.*;
 @RequiredArgsConstructor
 public class SoloCommand implements Command {
 
-    private final UserService userService;
+    private final UserService       userService;
     private final SoloSessionService soloService;
 
     @Override
@@ -27,8 +27,9 @@ public class SoloCommand implements Command {
         String challengerName = event.getMember() != null
                 ? event.getMember().getEffectiveName()
                 : event.getAuthor().getName();
+        String serverId = event.getGuild().getId();
 
-        userService.getUser(challengerId, challengerName);
+        userService.getOrCreate(challengerId, serverId);
 
         if (args.length < 3) {
             event.getChannel().sendMessage("Dùng: `!solo @user <số coin>`").queue();
@@ -40,36 +41,26 @@ public class SoloCommand implements Command {
             return;
         }
 
-        var target        = event.getMessage().getMentions().getMembers().get(0);
+        var    target     = event.getMessage().getMentions().getMembers().get(0);
         String targetId   = target.getId();
         String targetName = target.getEffectiveName();
 
-        if (targetId.equals(challengerId)) {
-            event.getChannel().sendMessage("❌ Không thể solo với chính mình!").queue();
-            return;
-        }
-
-        if (target.getUser().isBot()) {
-            event.getChannel().sendMessage("❌ Không thể solo với bot!").queue();
-            return;
-        }
+        if (targetId.equals(challengerId)) { event.getChannel().sendMessage("❌ Không thể solo với chính mình!").queue(); return; }
+        if (target.getUser().isBot())      { event.getChannel().sendMessage("❌ Không thể solo với bot!").queue(); return; }
 
         long bet;
         try {
             String rawBet = args[args.length - 1];
-            long balance = userService.getBalance(challengerId);
+            long balance = userService.getBalance(challengerId, serverId);
             bet = rawBet.equalsIgnoreCase("all") ? balance : Long.parseLong(rawBet);
         } catch (NumberFormatException e) {
             event.getChannel().sendMessage("❌ Số coin không hợp lệ!").queue();
             return;
         }
 
-        if (bet <= 0) {
-            event.getChannel().sendMessage("❌ Cược phải lớn hơn 0!").queue();
-            return;
-        }
+        if (bet <= 0) { event.getChannel().sendMessage("❌ Cược phải lớn hơn 0!").queue(); return; }
 
-        long challengerBalance = userService.getBalance(challengerId);
+        long challengerBalance = userService.getBalance(challengerId, serverId);
         if (challengerBalance < bet) {
             event.getChannel().sendMessage("❌ Bạn không đủ coin! Số dư: **" + challengerBalance + " coin**").queue();
             return;
@@ -79,14 +70,13 @@ public class SoloCommand implements Command {
             event.getChannel().sendMessage("❌ Bạn đang có ván solo chưa xong!").queue();
             return;
         }
-
         if (soloService.getByUser(targetId) != null) {
             event.getChannel().sendMessage("❌ **" + targetName + "** đang có ván solo chưa xong!").queue();
             return;
         }
 
-        userService.getUser(targetId, targetName);
-        long targetBalance = userService.getBalance(targetId);
+        userService.getOrCreate(targetId, serverId);
+        long targetBalance = userService.getBalance(targetId, serverId);
         if (targetBalance < bet) {
             event.getChannel().sendMessage("❌ **" + targetName + "** không đủ coin! Số dư: **" + targetBalance + " coin**").queue();
             return;
@@ -95,7 +85,6 @@ public class SoloCommand implements Command {
         SoloSession session = new SoloSession(challengerId, challengerName, targetId, targetName, bet);
         soloService.save(session);
 
-        // Lưu message ID ngay khi gửi để dùng cho editMessageEmbedsById sau này
         event.getChannel().sendMessageEmbeds(
                 new EmbedBuilder()
                         .setTitle("⚔️ Thách đấu Solo!")
@@ -106,8 +95,8 @@ public class SoloCommand implements Command {
                         .setFooter("Hết hạn sau 60 giây")
                         .build()
         ).setActionRow(
-                Button.success("solo_accept:" + challengerId, "✅ Chấp nhận"),
+                Button.success("solo_accept:"  + challengerId, "✅ Chấp nhận"),
                 Button.danger("solo_decline:" + challengerId, "❌ Từ chối")
-        ).queue(msg -> session.setPublicMessageId(msg.getId())); // ← lưu ID tại đây
+        ).queue(msg -> session.setPublicMessageId(msg.getId()));
     }
 }

@@ -4,6 +4,7 @@ import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.JedisPool;
@@ -18,7 +19,11 @@ import java.util.List;
 public class MaintenanceService {
 
     private static final String MAINTENANCE_KEY = "maintenance";
+
     private final JedisPool jedisPool;
+
+    @Value("${bot.maintenance.enabled:false}")
+    private boolean maintenanceEnabled;
 
     public MaintenanceService(JedisPool jedisPool) {
         this.jedisPool = jedisPool;
@@ -31,30 +36,50 @@ public class MaintenanceService {
 
     @PostConstruct
     public void init() {
-        if (isMaintenance()) {
-            log.info("⚠️  Bot đang ở chế độ bảo trì (đọc từ Redis).");
-        } else {
-            log.info("✅ Bot khởi động bình thường, không có bảo trì.");
+        try {
+            if (isMaintenance()) {
+                log.info("⚠️  Bot đang ở chế độ bảo trì (đọc từ Redis).");
+            } else {
+                log.info("✅ Bot khởi động bình thường, không có bảo trì.");
+            }
+        } catch (Exception e) {
+            log.warn("⚠️  Không thể kết nối Redis khi khởi động: {}", e.getMessage());
         }
     }
 
     public void enableMaintenance() {
+        if (!maintenanceEnabled) {
+            log.info("ℹ️  Bỏ qua enableMaintenance (local mode).");
+            return;
+        }
         try (Jedis jedis = jedisPool.getResource()) {
             jedis.set(MAINTENANCE_KEY, "true");
             log.info("🔧 Đã bật bảo trì.");
+        } catch (Exception e) {
+            log.warn("⚠️ Redis không khả dụng, không thể bật bảo trì");
         }
     }
 
     public void disableMaintenance() {
+        if (!maintenanceEnabled) {
+            log.info("ℹ️  Bỏ qua disableMaintenance (local mode).");
+            return;
+        }
         try (Jedis jedis = jedisPool.getResource()) {
             jedis.del(MAINTENANCE_KEY);
             log.info("✅ Đã tắt bảo trì.");
+        } catch (Exception e) {
+            log.warn("⚠️ Redis không khả dụng, không thể tắt bảo trì");
         }
     }
 
     public boolean isMaintenance() {
+        if (!maintenanceEnabled) return false;
         try (Jedis jedis = jedisPool.getResource()) {
             return "true".equals(jedis.get(MAINTENANCE_KEY));
+        } catch (Exception e) {
+            log.warn("⚠️ Redis không khả dụng, bỏ qua kiểm tra bảo trì");
+            return false;
         }
     }
 
